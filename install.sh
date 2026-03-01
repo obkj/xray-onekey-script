@@ -24,15 +24,15 @@ install_dependencies() {
     echo -e "${YELLOW}Installing dependencies...${PLAIN}"
     if [[ -f /etc/debian_version ]]; then
         apt-get update
-        apt-get install -y curl wget tar unzip jq openssl uuid-runtime net-tools qrencode procps gawk
+        apt-get install -y curl wget tar unzip jq net-tools qrencode procps gawk
     elif [[ -f /etc/redhat-release ]]; then
-        yum install -y curl wget tar unzip jq openssl net-tools qrencode procps
+        yum install -y curl wget tar unzip jq net-tools qrencode procps
     elif [[ -f /etc/openwrt_release ]] || [[ -f /etc/opkg.conf ]]; then
         opkg update
-        opkg install bash curl wget-ssl unzip jq openssl-util uuidgen ca-bundle net-tools-netstat qrencode
+        opkg install bash curl wget-ssl unzip jq ca-bundle net-tools-netstat qrencode
     elif [[ -f /etc/alpine-release ]]; then
         apk update
-        apk add bash curl wget tar unzip jq openssl util-linux net-tools qrencode ca-certificates
+        apk add bash curl wget tar unzip jq util-linux net-tools qrencode ca-certificates
     else
         echo -e "${RED}Unsupported OS${PLAIN}"
         exit 1
@@ -80,11 +80,7 @@ generate_config() {
     echo -e "${YELLOW}Generating configuration...${PLAIN}"
     
     # Generate UUID
-    if command -v uuidgen >/dev/null; then
-        UUID=$(uuidgen)
-    else
-        UUID=$(cat /proc/sys/kernel/random/uuid)
-    fi
+    UUID=$($XRAY_BIN_PATH uuid)
     
     # Generate Keys
     KEYS=$($XRAY_BIN_PATH x25519)
@@ -101,7 +97,7 @@ generate_config() {
     echo "$PUBLIC_KEY" > "$XRAY_PUBLIC_KEY_FILE"
     
     # Generate ShortId
-    SHORT_ID=$(openssl rand -hex 8)
+    SHORT_ID=$($XRAY_BIN_PATH uuid | tr -d '-' | head -c 16)
     
     # Generate Random High Port (50000+)
     echo -e "${YELLOW}Generating random high port (50000+)...${PLAIN}"
