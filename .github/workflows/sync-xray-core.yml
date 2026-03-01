@@ -1,0 +1,48 @@
+name: Sync Xray Kernel to Releases
+
+on:
+  # schedule:
+  #  - cron: '0 0 * * *'  # 每天 00:00 UTC 运行
+  workflow_dispatch:  # 允许手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get latest Xray-core release
+        id: get_latest_release
+        run: |
+          LATEST_TAG=$(curl -sL "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | jq -r '.tag_name // empty')
+          if [ -z "$LATEST_TAG" ]; then
+            echo "Failed to get latest tag from XTLS/Xray-core"
+            exit 1
+          fi
+          echo "latest_tag=${LATEST_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Download Xray-core
+        id: download
+        run: |
+          LATEST_TAG=${{ steps.get_latest_release.outputs.latest_tag }}
+          
+          # 下载常用架构
+          for ARCH in 64 32 arm64-v8a arm32-v7; do
+            FILE="Xray-linux-${ARCH}.zip"
+            URL="https://github.com/XTLS/Xray-core/releases/download/${LATEST_TAG}/${FILE}"
+            echo "Downloading $FILE..."
+            curl -sLo "$FILE" "$URL"
+          done
+
+      - name: Upload to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: Xray-linux-*.zip
+          tag: ${{ steps.get_latest_release.outputs.latest_tag }}
+          overwrite: true
+          file_glob: true
