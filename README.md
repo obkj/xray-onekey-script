@@ -1,4 +1,4 @@
-# xray-reality-shell
+# xray-reality-script
 
 A simple and efficient one-key deployment script for Xray with VLESS-XTLS-uTLS-REALITY architecture.
 
@@ -17,7 +17,7 @@ This script automates the installation of Xray-core, generates necessary keys, a
 Run the following command on your VPS (Debian/Ubuntu/CentOS/Alpine/Openwrt):
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-reality-shell/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-reality-script/main/install.sh)
 ```
 
 Follow the on-screen prompts to set the port and SNI (or press Enter for defaults).

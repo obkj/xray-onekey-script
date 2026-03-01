@@ -42,7 +42,7 @@ install_dependencies() {
 install_xray_core() {
     echo -e "${YELLOW}Downloading Xray-core...${PLAIN}"
     # Get latest release version
-    LATEST_VER=$(curl -s https://api.github.com/repos/obkj/xray-reality-shell/releases/latest | jq -r .tag_name)
+    LATEST_VER=$(curl -s https://api.github.com/repos/obkj/xray-reality-script/releases/latest | jq -r .tag_name)
     if [[ -z "$LATEST_VER" ]]; then
         echo -e "${RED}Failed to fetch latest Xray version.${PLAIN}"
         exit 1
@@ -57,7 +57,7 @@ install_xray_core() {
         *) echo -e "${RED}Unsupported architecture: $ARCH${PLAIN}"; exit 1 ;;
     esac
 
-    DOWNLOAD_URL="https://github.com/obkj/xray-reality-shell/releases/download/${LATEST_VER}/Xray-linux-${ARCH}.zip"
+    DOWNLOAD_URL="https://github.com/obkj/xray-reality-script/releases/download/${LATEST_VER}/Xray-linux-${ARCH}.zip"
     
     mkdir -p /tmp/xray
     wget -O /tmp/xray/xray.zip "$DOWNLOAD_URL"
@@ -266,7 +266,7 @@ is_running() {
 
 create_shortcut() {
     echo -e "${YELLOW}Creating shortcut 'xr'...${PLAIN}"
-    wget -O /usr/local/bin/xr https://raw.githubusercontent.com/obkj/xray-reality-shell/main/install.sh
+    wget -O /usr/local/bin/xr https://raw.githubusercontent.com/obkj/xray-reality-script/main/install.sh
     chmod +x /usr/local/bin/xr
     echo -e "${GREEN}Shortcut 'xr' created. You can run this script by typing 'xr'.${PLAIN}"
 }
