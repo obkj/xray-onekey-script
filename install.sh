@@ -116,8 +116,8 @@ generate_config() {
         break
     done
     
-    read -p "Enter SNI/Dest (default www.microsoft.com): " DEST
-    [[ -z "$DEST" ]] && DEST="www.microsoft.com"
+    DEST="www.microsoft.com"
+    echo -e "Using default SNI/Dest: ${GREEN}${DEST}${PLAIN}"
 
     cat > "$XRAY_CONFIG_FILE" <<EOF
 {
