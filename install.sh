@@ -42,7 +42,7 @@ install_dependencies() {
 install_xray_core() {
     echo -e "${YELLOW}Downloading Xray-core...${PLAIN}"
     # Get latest release version
-    LATEST_VER=$(curl -s https://api.github.com/repos/obkj/xray-reality-script/releases/latest | jq -r .tag_name)
+    LATEST_VER=$(curl -s https://api.github.com/repos/obkj/xray-onekey-script/releases/latest | jq -r .tag_name)
     if [[ -z "$LATEST_VER" ]]; then
         echo -e "${RED}Failed to fetch latest Xray version.${PLAIN}"
         exit 1
@@ -57,7 +57,7 @@ install_xray_core() {
         *) echo -e "${RED}Unsupported architecture: $ARCH${PLAIN}"; exit 1 ;;
     esac
 
-    DOWNLOAD_URL="https://github.com/obkj/xray-reality-script/releases/download/${LATEST_VER}/Xray-linux-${ARCH}.zip"
+    DOWNLOAD_URL="https://github.com/obkj/xray-onekey-script/releases/download/${LATEST_VER}/Xray-linux-${ARCH}.zip"
     
     mkdir -p /tmp/xray
     wget -O /tmp/xray/xray.zip "$DOWNLOAD_URL"
@@ -99,8 +99,8 @@ generate_config() {
     # Generate ShortId
     SHORT_ID=$($XRAY_BIN_PATH uuid | tr -d '-' | head -c 16)
     
-    # Generate Random High Port (50000+)
-    echo -e "${YELLOW}Generating random high port (50000+)...${PLAIN}"
+    # Generate VLESS Port
+    echo -e "${YELLOW}Generating random high port for VLESS (50000+)...${PLAIN}"
     while true; do
         PORT=$((RANDOM % 15536 + 50000))
         if command -v netstat >/dev/null; then
@@ -112,9 +112,32 @@ generate_config() {
                 continue
             fi
         fi
-        echo -e "Using Port: ${GREEN}${PORT}${PLAIN}"
+        echo -e "Using VLESS Port: ${GREEN}${PORT}${PLAIN}"
         break
     done
+
+    # Generate VMess Port
+    echo -e "${YELLOW}Generating random high port for VMess (50000+)...${PLAIN}"
+    while true; do
+        VMESS_PORT=$((RANDOM % 15536 + 50000))
+        if [[ $VMESS_PORT -eq $PORT ]]; then
+            continue
+        fi
+        if command -v netstat >/dev/null; then
+            if netstat -tuln | grep -q ":$VMESS_PORT "; then
+                continue
+            fi
+        elif command -v ss >/dev/null; then
+            if ss -tuln | grep -q ":$VMESS_PORT "; then
+                continue
+            fi
+        fi
+        echo -e "Using VMess Port: ${GREEN}${VMESS_PORT}${PLAIN}"
+        break
+    done
+    
+    # Generate VMess UUID
+    VMESS_UUID=$($XRAY_BIN_PATH uuid)
     
     DEST="www.microsoft.com"
     echo -e "Using default SNI/Dest: ${GREEN}${DEST}${PLAIN}"
@@ -160,6 +183,18 @@ generate_config() {
           "http",
           "tls",
           "quic"
+        ]
+      }
+    },
+    {
+      "port": $VMESS_PORT,
+      "protocol": "vmess",
+      "settings": {
+        "clients": [
+          {
+            "id": "$VMESS_UUID",
+            "alterId": 0
+          }
         ]
       }
     }
@@ -262,7 +297,7 @@ is_running() {
 
 create_shortcut() {
     echo -e "${YELLOW}Creating shortcut 'xr'...${PLAIN}"
-    wget -O /usr/local/bin/xr https://raw.githubusercontent.com/obkj/xray-reality-script/main/install.sh
+    wget -O /usr/local/bin/xr https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install.sh
     chmod +x /usr/local/bin/xr
     echo -e "${GREEN}Shortcut 'xr' created. You can run this script by typing 'xr'.${PLAIN}"
 }
@@ -287,6 +322,9 @@ show_info() {
         PORT=$(jq -r '.inbounds[0].port' "$XRAY_CONFIG_FILE")
         DEST=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$XRAY_CONFIG_FILE")
         SHORT_ID=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$XRAY_CONFIG_FILE")
+        
+        VMESS_UUID=$(jq -r '.inbounds[1].settings.clients[0].id' "$XRAY_CONFIG_FILE")
+        VMESS_PORT=$(jq -r '.inbounds[1].port' "$XRAY_CONFIG_FILE")
     fi
 
     if [[ -z "$PUBLIC_KEY" ]] || [[ "$PUBLIC_KEY" == "null" ]]; then
@@ -304,18 +342,26 @@ show_info() {
     REMARK=$(curl -sm 3 -H "User-Agent: Mozilla/5.0" "https://api.ip.sb/geoip" | tr -d '\n' | awk -F\" '{c="";i="";for(x=1;x<=NF;x++){if($x=="country_code")c=$(x+2);if($x=="isp")i=$(x+2)};if(c&&i)print c"-"i}' | sed 's/ /_/g' || curl -sm 3 -H "User-Agent: Mozilla/5.0" "https://ipapi.co/json" | tr -d '\n' | awk -F\" '{c="";o="";for(x=1;x<=NF;x++){if($x=="country_code")c=$(x+2);if($x=="org")o=$(x+2)};if(c&&o)print c"-"o}' | sed 's/ /_/g' || echo "VPS")
 
     SHARE_LINK="vless://${UUID}@${IP}:${PORT}?security=reality&encryption=none&pbk=${PUBLIC_KEY}&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=${DEST}&sid=${SHORT_ID}&spx=%2F#${REMARK}"
-    
+    VMESS_SHARE_LINK=$(echo -n "{\"v\":\"2\",\"ps\":\"${REMARK}_vmess\",\"add\":\"${IP}\",\"port\":\"${VMESS_PORT}\",\"id\":\"${VMESS_UUID}\",\"aid\":\"0\",\"scy\":\"aes-128-gcm\",\"net\":\"tcp\",\"type\":\"none\",\"host\":\"\",\"path\":\"\",\"tls\":\"\",\"sni\":\"\",\"alpn\":\"\"}" | base64 -w 0)
+    VMESS_LINK="vmess://${VMESS_SHARE_LINK}"
+
     if command -v qrencode >/dev/null; then
-        echo -e "${YELLOW}QR Code:${PLAIN}"
+        echo -e "${YELLOW}VLESS QR Code:${PLAIN}"
         qrencode -t ANSIUTF8 "${SHARE_LINK}"
+        echo -e ""
+        echo -e "${YELLOW}VMess QR Code:${PLAIN}"
+        qrencode -t ANSIUTF8 "${VMESS_LINK}"
         echo -e ""
     fi
     echo -e "----------------vless Share Link----------------"
     echo -e "${GREEN}${SHARE_LINK}${PLAIN}"
+    echo -e "----------------vmess Share Link----------------"
+    echo -e "${GREEN}${VMESS_LINK}${PLAIN}"
     echo -e "------------------------------------------------"
 
-    # Save share link to file
-    echo "${SHARE_LINK}" > /usr/local/etc/xray/share_link.txt
+    # Save share links to file
+    echo "VLESS: ${SHARE_LINK}" > /usr/local/etc/xray/share_link.txt
+    echo "VMESS: ${VMESS_LINK}" >> /usr/local/etc/xray/share_link.txt
 }
 
 open_port() {
@@ -370,6 +416,7 @@ install_full() {
     install_xray_core
     generate_config
     open_port $PORT
+    open_port $VMESS_PORT
     setup_service
     create_shortcut
     
@@ -386,8 +433,10 @@ install_full() {
 uninstall_xray() {
     echo -e "${YELLOW}Uninstalling Xray...${PLAIN}"
     if [[ -f "$XRAY_CONFIG_FILE" ]]; then
-        PORT=$(jq -r '.inbounds[0].port' "$XRAY_CONFIG_FILE")
-        close_port $PORT
+        PORTS=$(jq -r '.inbounds[].port' "$XRAY_CONFIG_FILE")
+        for port in $PORTS; do
+            close_port $port
+        done
     fi
 
     if [[ -f /etc/openwrt_release ]] || [[ -f /etc/alpine-release ]]; then
