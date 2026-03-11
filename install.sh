@@ -8,10 +8,25 @@ GREEN="\033[32m"
 YELLOW="\033[33m"
 PLAIN="\033[0m"
 
-XRAY_CONFIG_FILE="/usr/local/etc/xray/config.json"
-XRAY_PUBLIC_KEY_FILE="/usr/local/etc/xray/public.key"
-XRAY_BIN_PATH="/usr/local/bin/xray"
+XRAY_BIN_DIR="/usr/local/bin"
+XRAY_BIN_PATH="${XRAY_BIN_DIR}/xray"
+XRAY_ETC_DIR="/usr/local/etc/xray"
+XRAY_CONFIG_FILE="${XRAY_ETC_DIR}/config.json"
+XRAY_PUBLIC_KEY_FILE="${XRAY_ETC_DIR}/public.key"
+XRAY_SHARE_LINK_FILE="${XRAY_ETC_DIR}/share_link.txt"
+XRAY_LOG_DIR="/var/log/xray"
+XRAY_SHORTCUT_PATH="${XRAY_BIN_DIR}/xr"
 SYSTEMD_FILE="/etc/systemd/system/xray.service"
+
+if [[ -f /etc/openwrt_release ]]; then
+    XRAY_BIN_DIR="/usr/bin"
+    XRAY_BIN_PATH="${XRAY_BIN_DIR}/xray"
+    XRAY_ETC_DIR="/etc/xray"
+    XRAY_CONFIG_FILE="${XRAY_ETC_DIR}/config.json"
+    XRAY_PUBLIC_KEY_FILE="${XRAY_ETC_DIR}/public.key"
+    XRAY_SHARE_LINK_FILE="${XRAY_ETC_DIR}/share_link.txt"
+    XRAY_SHORTCUT_PATH="${XRAY_BIN_DIR}/xr"
+fi
 
 check_root() {
     if [[ $EUID -ne 0 ]]; then
@@ -68,12 +83,13 @@ install_xray_core() {
     fi
 
     unzip -o /tmp/xray/xray.zip -d /tmp/xray
+    mkdir -p "$XRAY_BIN_DIR"
     mv /tmp/xray/xray "$XRAY_BIN_PATH"
     chmod +x "$XRAY_BIN_PATH"
     rm -rf /tmp/xray
     
-    mkdir -p /usr/local/etc/xray
-    mkdir -p /var/log/xray
+    mkdir -p "$XRAY_ETC_DIR"
+    mkdir -p "$XRAY_LOG_DIR"
 }
 
 generate_config() {
@@ -145,9 +161,9 @@ generate_config() {
     cat > "$XRAY_CONFIG_FILE" <<EOF
 {
   "log": {
-    "loglevel": "error",
-    "access": "/var/log/xray/access.log",
-    "error": "/var/log/xray/error.log"
+    "loglevel": "none",
+    "access": "${XRAY_LOG_DIR}/access.log",
+    "error": "${XRAY_LOG_DIR}/error.log"
   },
   "inbounds": [
     {
@@ -297,8 +313,8 @@ is_running() {
 
 create_shortcut() {
     echo -e "${YELLOW}Creating shortcut 'xr'...${PLAIN}"
-    wget -O /usr/local/bin/xr https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install.sh
-    chmod +x /usr/local/bin/xr
+    wget -O "$XRAY_SHORTCUT_PATH" https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install.sh
+    chmod +x "$XRAY_SHORTCUT_PATH"
     echo -e "${GREEN}Shortcut 'xr' created. You can run this script by typing 'xr'.${PLAIN}"
 }
 
@@ -360,8 +376,8 @@ show_info() {
     echo -e "------------------------------------------------"
 
     # Save share links to file
-    echo "VLESS: ${SHARE_LINK}" > /usr/local/etc/xray/share_link.txt
-    echo "VMESS: ${VMESS_LINK}" >> /usr/local/etc/xray/share_link.txt
+    echo "VLESS: ${SHARE_LINK}" > "$XRAY_SHARE_LINK_FILE"
+    echo "VMESS: ${VMESS_LINK}" >> "$XRAY_SHARE_LINK_FILE"
 }
 
 open_port() {
@@ -455,9 +471,9 @@ uninstall_xray() {
     fi
     
     rm -rf "$XRAY_BIN_PATH"
-    rm -rf /usr/local/etc/xray
-    rm -rf /var/log/xray
-    rm -f /usr/local/bin/xr
+    rm -rf "$XRAY_ETC_DIR"
+    rm -rf "$XRAY_LOG_DIR"
+    rm -f "$XRAY_SHORTCUT_PATH"
     
     echo -e "${GREEN}Xray uninstalled.${PLAIN}"
 }
