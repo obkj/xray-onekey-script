@@ -484,31 +484,51 @@ change_port() {
         return
     fi
     
-    read -p "Enter new Port (default random): " NEW_PORT
-    if [[ -z "$NEW_PORT" ]]; then
+    OLD_VLESS_PORT=$(jq -r '.inbounds[0].port' "$XRAY_CONFIG_FILE")
+    OLD_VMESS_PORT=$(jq -r '.inbounds[1].port' "$XRAY_CONFIG_FILE")
+    
+    echo -e "Current VLESS Port: ${GREEN}${OLD_VLESS_PORT}${PLAIN}"
+    echo -e "Current VMess Port: ${GREEN}${OLD_VMESS_PORT}${PLAIN}"
+    
+    read -p "Enter new VLESS Port (default random): " NEW_VLESS_PORT
+    if [[ -z "$NEW_VLESS_PORT" ]]; then
         while true; do
-            NEW_PORT=$((RANDOM % 15536 + 50000))
+            NEW_VLESS_PORT=$((RANDOM % 15536 + 50000))
             if command -v netstat >/dev/null; then
-                if netstat -tuln | grep -q ":$NEW_PORT "; then
-                    continue
-                fi
+                if netstat -tuln | grep -q ":$NEW_VLESS_PORT "; then continue; fi
             elif command -v ss >/dev/null; then
-                if ss -tuln | grep -q ":$NEW_PORT "; then
-                    continue
-                fi
+                if ss -tuln | grep -q ":$NEW_VLESS_PORT "; then continue; fi
             fi
             break
         done
     fi
-    echo -e "Using Port: ${GREEN}${NEW_PORT}${PLAIN}"
+    echo -e "Using VLESS Port: ${GREEN}${NEW_VLESS_PORT}${PLAIN}"
     
-    OLD_PORT=$(jq -r '.inbounds[0].port' "$XRAY_CONFIG_FILE")
+    read -p "Enter new VMess Port (default random): " NEW_VMESS_PORT
+    if [[ -z "$NEW_VMESS_PORT" ]]; then
+        while true; do
+            NEW_VMESS_PORT=$((RANDOM % 15536 + 50000))
+            if [[ $NEW_VMESS_PORT -eq $NEW_VLESS_PORT ]]; then continue; fi
+            if command -v netstat >/dev/null; then
+                if netstat -tuln | grep -q ":$NEW_VMESS_PORT "; then continue; fi
+            elif command -v ss >/dev/null; then
+                if ss -tuln | grep -q ":$NEW_VMESS_PORT "; then continue; fi
+            fi
+            break
+        done
+    fi
+    echo -e "Using VMess Port: ${GREEN}${NEW_VMESS_PORT}${PLAIN}"
     
     TMP_FILE=$(mktemp)
-    jq --arg port "$NEW_PORT" '.inbounds[0].port = ($port|tonumber)' "$XRAY_CONFIG_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$XRAY_CONFIG_FILE"
+    jq --arg vless_port "$NEW_VLESS_PORT" --arg vmess_port "$NEW_VMESS_PORT" \
+       '.inbounds[0].port = ($vless_port|tonumber) | .inbounds[1].port = ($vmess_port|tonumber)' \
+       "$XRAY_CONFIG_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$XRAY_CONFIG_FILE"
     
-    close_port $OLD_PORT
-    open_port $NEW_PORT
+    close_port $OLD_VLESS_PORT
+    close_port $OLD_VMESS_PORT
+    open_port $NEW_VLESS_PORT
+    open_port $NEW_VMESS_PORT
+    
     restart_service
     show_info
 }
