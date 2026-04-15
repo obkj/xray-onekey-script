@@ -212,6 +212,18 @@ parse_argo_domain() {
     sed -n 's|.*https://\([^/]*trycloudflare\.com\).*|\1|p' "$argo_log_file" | tail -n 1
 }
 
+download_file() {
+    local output_path="$1"
+    local download_url="$2"
+    local display_name="$3"
+
+    yellow "正在下载 ${display_name}..."
+    if ! curl -fL# -o "$output_path" "$download_url"; then
+        red "下载失败：${display_name}"
+        return 1
+    fi
+}
+
 start_argo_process_macos() {
     nohup "${work_dir}/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol http2 > "${work_dir}/argo.log" 2>&1 &
 }
@@ -245,17 +257,20 @@ install_xray() {
     fi
 
     [ ! -d "${work_dir}" ] && mkdir -p "${work_dir}" && chmod 755 "${work_dir}"
-    curl -sLo "${work_dir}/${server_name}.zip" "https://github.com/XTLS/Xray-core/releases/latest/download/${XRAY_ASSET}"
+    download_file "${work_dir}/${server_name}.zip" "https://github.com/XTLS/Xray-core/releases/latest/download/${XRAY_ASSET}" "Xray-core"
 
     if [ "$is_macos" = true ]; then
-        curl -sLo "${work_dir}/argo.tgz" "https://github.com/cloudflare/cloudflared/releases/latest/download/${CLOUDflared_ASSET}"
+        download_file "${work_dir}/argo.tgz" "https://github.com/cloudflare/cloudflared/releases/latest/download/${CLOUDflared_ASSET}" "cloudflared"
+        yellow "正在解压 Xray-core..."
         unzip "${work_dir}/${server_name}.zip" -d "${work_dir}/" > /dev/null 2>&1
+        yellow "正在解压 cloudflared..."
         tar -xzf "${work_dir}/argo.tgz" -C "${work_dir}" > /dev/null 2>&1
         chmod +x "${work_dir}/${server_name}" "${work_dir}/cloudflared"
         mv -f "${work_dir}/cloudflared" "${work_dir}/argo"
     else
-        curl -sLo "${work_dir}/qrencode" "https://github.com/eooce/test/releases/download/${ARCH}/qrencode-linux-${ARCH}"
-        curl -sLo "${work_dir}/argo" "https://github.com/cloudflare/cloudflared/releases/latest/download/${CLOUDflared_ASSET}"
+        download_file "${work_dir}/qrencode" "https://github.com/eooce/test/releases/download/${ARCH}/qrencode-linux-${ARCH}" "qrencode"
+        download_file "${work_dir}/argo" "https://github.com/cloudflare/cloudflared/releases/latest/download/${CLOUDflared_ASSET}" "cloudflared"
+        yellow "正在解压 Xray-core..."
         unzip "${work_dir}/${server_name}.zip" -d "${work_dir}/" > /dev/null 2>&1 && chmod +x "${work_dir}/${server_name}" "${work_dir}/argo" "${work_dir}/qrencode"
     fi
 
