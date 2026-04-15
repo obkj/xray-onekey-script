@@ -119,39 +119,59 @@ random_port() {
     fi
 }
 
-# 带进度条的下载
+# 带进度条的下载（支持自动切换镜像）
 download_with_progress() {
     local url="$1"
     local output="$2"
     local label="$3"
-
-    info "下载: ${label}"
-    info "来源: ${url}"
-
     local tmp_file="${output}.tmp"
 
-    # 关键：不 pipe curl 的输出
-    # --progress-bar 写到 stderr，直接流向终端，\r 动画才能正常渲染
-    # 用 { ... } 捕获退出码，而不是 pipe
-    echo -ne "  ${CYAN}"
-    if curl -fL \
-        --progress-bar \
-        --retry 3 \
-        --retry-delay 2 \
-        --connect-timeout 15 \
-        --max-time 300 \
-        -o "$tmp_file" \
-        "$url"; then
-        echo -e "${RESET}"
-        mv "$tmp_file" "$output"
-        local size
-        size=$(du -sh "$output" 2>/dev/null | cut -f1)
-        ok "${label} 下载完成 (${size})"
-    else
-        echo -e "${RESET}"
+    info "下载: ${label}"
+
+    # 下载源列表：直连优先，失败后自动切换国内加速镜像
+    local sources=(
+        "${url}"
+        "https://ghfast.top/${url}"
+        "https://ghproxy.com/${url}"
+        "https://github.moeyy.xyz/${url}"
+        "https://p.ff11.tk/${url}"
+    )
+
+    local attempt=0
+    for src_url in "${sources[@]}"; do
+        attempt=$((attempt + 1))
         rm -f "$tmp_file"
-        fail "${label} 下载失败，请检查网络或 GitHub 连通性"
-    fi
+
+        if [[ $attempt -eq 1 ]]; then
+            info "尝试 [${attempt}/${#sources[@]}] 直连 GitHub"
+        else
+            local mirror_host
+            mirror_host=$(echo "$src_url" | awk -F/ '{print $3}')
+            info "尝试 [${attempt}/${#sources[@]}] 镜像: ${mirror_host}"
+        fi
+
+        # --speed-limit 5120 --speed-time 20
+        # 若连续 20 秒内平均速率低于 5 KB/s，判定超时并中断，尝试下一个源
+        # 比固定 --max-time 更智能：网速快时不误杀，网速慢时尽早切换
+        if curl -fL \
+            --progress-bar \
+            --connect-timeout 15 \
+            --speed-limit 5120 \
+            --speed-time 20 \
+            -o "$tmp_file" \
+            "$src_url" 2>/dev/tty; then
+            mv "$tmp_file" "$output"
+            local size
+            size=$(du -sh "$output" 2>/dev/null | cut -f1)
+            ok "${label} 下载完成 (${size})"
+            return 0
+        fi
+
+        warn "下载失败，尝试下一个源..."
+    done
+
+    rm -f "$tmp_file"
+    fail "${label} 所有下载源均失败，请检查网络连接"
 }
 
 # ─── Step 1: 检测架构并选择下载包 ───────────────────────────────────────────
