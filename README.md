@@ -30,13 +30,13 @@ Run the following command on your VPS (Debian/Ubuntu/CentOS/Alpine/OpenWrt) for 
 bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install.sh)
 ```
 
-Run the following command for `xray_2go.sh`:
+Run the following command for `install_argo.sh`:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/xray_2go.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh)
 ```
 
-For `xray_2go.sh`, macOS is supported in the limited scope described above.
+For `install_argo.sh`, macOS is supported in the limited scope described above.
 
 Follow the on-screen prompts to set the port and SNI (or press Enter for defaults).
 
