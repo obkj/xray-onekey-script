@@ -1,42 +1,102 @@
 # xray-onekey-script
 
-A simple and efficient one-key deployment script for Xray supporting both **VLESS-Reality** and **VMess** protocols.
+一键部署 Xray-core + Cloudflare Argo 临时隧道，无需交互，全程自动完成。
 
-This script automates the installation of Xray-core, generates necessary credentials, and configures the service for optimal performance and security.
+支持 **macOS** 和 **Linux**，生成 VLESS-Reality、VLESS-Argo-WS、VMess-Argo-WS 四条节点。
 
-## Features
+---
 
-- **Dual Protocol Support**: Automatically sets up both VLESS (Reality) and VMess inbounds.
-- **Auto-Install**: Automatically downloads the latest Xray-core.
-- **Reality Config**: Configures VLESS with XTLS-Vision and Reality security.
-- **Key Generation**: Automatically generates UUIDs, Private/Public keys, and ShortIds.
-- **Service Management**: Sets up systemd for auto-start and restart.
-- **High Port Randomization**: Generates random high-range ports (>50000) for better concealment.
-- **Share Links**: Outputs standard `vless://` and `vmess://` share links and QR codes.
+## 节点类型
 
-## Platform support
+| 节点 | 协议 | 传输 | 穿透 | 说明 |
+|------|------|------|------|------|
+| Reality gRPC | VLESS | gRPC | 直连 | 抗封锁，需直连可用 |
+| Reality xHTTP | VLESS | xHTTP | 直连 | 新型传输，需直连可用 |
+| Argo VLESS-WS | VLESS | WebSocket | Cloudflare CDN | 国内稳定，走优选 IP |
+| Argo VMess-WS | VMess | WebSocket | Cloudflare CDN | 兼容性最广，走优选 IP |
 
-- **Linux (Debian/Ubuntu/CentOS/Alpine/OpenWrt)**: full existing workflow.
-- **macOS**: `xray_2go.sh` supports installation, config/share-link generation, and temporary Argo domains.
-  - Supported on macOS: Xray install, cloudflared quick tunnel, `trycloudflare.com` temporary domain parsing, and Argo-based node generation.
-  - Not supported on macOS: Caddy subscription hosting, systemd/openrc service management, and fixed tunnel management.
-  - After installation on macOS, start Xray manually with the command printed by the script.
+---
 
-## Usage
+## 快速安装
 
-Run the following command on your VPS (Debian/Ubuntu/CentOS/Alpine/OpenWrt) for the Linux installer:
+### `install_argo.sh` — 无交互版（推荐）
+
+支持 **macOS** 和 **Linux**，自动完成所有步骤，无需人工输入。
+
+```bash
+sudo bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh)
+```
+
+安装完成后自动输出所有节点链接，并创建快捷管理命令 `2go`。
+
+### `install.sh` — 交互版（Linux）
+
+仅支持 **Linux（Debian / Ubuntu / CentOS / Alpine）**，包含完整菜单管理界面。
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install.sh)
 ```
 
-Run the following command for `install_argo.sh`:
+---
+
+## 平台支持
+
+| 功能 | macOS | Linux |
+|------|:-----:|:-----:|
+| Xray 安装 | ✅ | ✅ |
+| Reality 节点 | ✅ | ✅ |
+| Argo 临时隧道 | ✅ | ✅ |
+| Argo 固定隧道 | ❌ | ✅ |
+| Caddy 订阅服务 | ❌ | ✅ |
+| systemd 自启动 | ❌ | ✅ |
+| 开机自动启动 | 需手动配置 launchd | ✅ 自动 |
+
+---
+
+## 安装后管理
+
+安装完成后可使用 `2go` 命令进行管理：
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh)
+2go status     # 查看 Xray / Argo 运行状态
+2go nodes      # 显示所有节点链接
+2go start      # 启动服务
+2go stop       # 停止服务
+2go restart    # 重启服务
+2go log-xray   # 查看 Xray 日志
+2go log-argo   # 查看 Argo 日志（含临时域名）
 ```
 
-For `install_argo.sh`, macOS is supported in the limited scope described above.
+---
 
-Follow the on-screen prompts to set the port and SNI (or press Enter for defaults).
+## 自定义环境变量
 
+运行前可通过环境变量覆盖默认值：
+
+```bash
+# 示例：指定 UUID 和端口
+UUID=your-uuid PORT=12345 sudo bash <(curl -Ls .../install_argo.sh)
+
+# 示例：自定义 CDN 优选 IP
+CFIP=1.2.3.4 CFPORT=443 sudo bash <(curl -Ls .../install_argo.sh)
+```
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `UUID` | 随机生成 | 节点 UUID |
+| `PORT` | 随机 10000–60000 | Reality 基础端口（gRPC=PORT, xHTTP=PORT+1） |
+| `CFIP` | `icook.tw` | Argo 节点使用的 CF 优选 IP / 域名 |
+| `CFPORT` | `443` | Argo 节点端口 |
+
+---
+
+## 文件位置
+
+| 路径 | 说明 |
+|------|------|
+| `/usr/local/etc/xray/` (macOS) | 安装目录 |
+| `/etc/xray/` (Linux) | 安装目录 |
+| `…/config.json` | Xray 配置文件 |
+| `…/url.txt` | 节点链接文本 |
+| `…/argo.log` | Argo 日志（含临时域名） |
+| `…/xray.log` | Xray 运行日志 |

@@ -582,7 +582,7 @@ fi
 # ─── Step 10: 获取公网 IP & 生成节点链接 ─────────────────────────────────────
 step "生成节点订阅信息"
 
-CFIP="${CFIP:-cdns.doon.eu.org}"
+CFIP="${CFIP:-icook.tw}"
 CFPORT="${CFPORT:-443}"
 
 info "获取公网 IP..."
