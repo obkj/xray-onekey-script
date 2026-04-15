@@ -440,17 +440,21 @@ ok "配置文件生成完成: ${CONFIG_FILE}"
 step "启动 Xray 服务"
 
 if $IS_MACOS; then
-    # macOS: nohup 后台运行
-    nohup "${WORK_DIR}/xray" run -c "${CONFIG_FILE}" \
+    # macOS: 后台运行
+    # 不用 nohup —— 当脚本通过 bash <(curl -Ls ...) 运行时 stdin 是 pipe 而非 tty，
+    # nohup 会报 "can't detach from console: Inappropriate ioctl for device"
+    # 改为显式将 stdin 重定向到 /dev/null，用 disown 脱离 shell 作业表
+    "${WORK_DIR}/xray" run -c "${CONFIG_FILE}" \
+        < /dev/null \
         > "${XRAY_LOG}" 2>&1 &
     XRAY_PID=$!
+    disown "$XRAY_PID" 2>/dev/null || true
     info "Xray PID: ${XRAY_PID}"
     sleep 2
 
     if kill -0 "$XRAY_PID" 2>/dev/null; then
         ok "Xray 已在后台启动 (PID: ${XRAY_PID})"
         info "日志: ${XRAY_LOG}"
-        info "手动停止: kill ${XRAY_PID}"
         info "快捷停止: pkill -f '${WORK_DIR}/xray run'"
     else
         r "Xray 启动失败，日志如下:"
@@ -506,15 +510,17 @@ step "启动 Argo 临时隧道 & 获取域名"
 
 rm -f "${ARGO_LOG}"
 
-# 启动 argo
-nohup "${WORK_DIR}/argo" tunnel \
+# 启动 argo（同样避免 nohup，原因同 xray 启动部分）
+"${WORK_DIR}/argo" tunnel \
     --url "http://localhost:${ARGO_PORT}" \
     --no-autoupdate \
     --edge-ip-version auto \
     --protocol http2 \
+    < /dev/null \
     > "${ARGO_LOG}" 2>&1 &
 
 ARGO_PID=$!
+disown "$ARGO_PID" 2>/dev/null || true
 info "Argo PID: ${ARGO_PID}"
 info "正在等待 trycloudflare.com 临时域名分配..."
 
@@ -632,9 +638,13 @@ IS_MACOS=false
 case "${1:-status}" in
     start)
         if $IS_MACOS; then
-            nohup "$WORK_DIR/xray" run -c "$WORK_DIR/config.json" > "$WORK_DIR/xray.log" 2>&1 &
+            "$WORK_DIR/xray" run -c "$WORK_DIR/config.json" \
+                < /dev/null > "$WORK_DIR/xray.log" 2>&1 &
+            disown $! 2>/dev/null || true
             echo "Xray started (PID $!)"
-            nohup "$WORK_DIR/argo" tunnel --url "http://localhost:8080" --no-autoupdate --edge-ip-version auto --protocol http2 > "$WORK_DIR/argo.log" 2>&1 &
+            "$WORK_DIR/argo" tunnel --url "http://localhost:8080" --no-autoupdate --edge-ip-version auto --protocol http2 \
+                < /dev/null > "$WORK_DIR/argo.log" 2>&1 &
+            disown $! 2>/dev/null || true
             echo "Argo started (PID $!)"
         else
             systemctl start xray tunnel
