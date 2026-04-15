@@ -130,6 +130,10 @@ download_with_progress() {
 
     local tmp_file="${output}.tmp"
 
+    # 关键：不 pipe curl 的输出
+    # --progress-bar 写到 stderr，直接流向终端，\r 动画才能正常渲染
+    # 用 { ... } 捕获退出码，而不是 pipe
+    echo -ne "  ${CYAN}"
     if curl -fL \
         --progress-bar \
         --retry 3 \
@@ -137,15 +141,14 @@ download_with_progress() {
         --connect-timeout 15 \
         --max-time 300 \
         -o "$tmp_file" \
-        "$url" 2>&1 | \
-        while IFS= read -r line; do
-            echo -e "  ${CYAN}${line}${RESET}"
-        done; then
+        "$url"; then
+        echo -e "${RESET}"
         mv "$tmp_file" "$output"
         local size
         size=$(du -sh "$output" 2>/dev/null | cut -f1)
         ok "${label} 下载完成 (${size})"
     else
+        echo -e "${RESET}"
         rm -f "$tmp_file"
         fail "${label} 下载失败，请检查网络或 GitHub 连通性"
     fi
