@@ -58,7 +58,8 @@ bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/i
 2go stop       # 停止服务
 2go restart    # 重启服务
 2go log-xray   # 查看 Xray 日志
-2go log-argo   # 查看 Argo 日志（含临时域名）
+2go log-argo   # 查看 Argo 日志
+2go uninstall  # 一键卸载
 ```
 
 ---
