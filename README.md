@@ -1,4 +1,4 @@
-支持 **macOS** 和 **Linux**，生成 VMess-Argo-WS 隧道节点。采用 **Direct First** 策略，默认直连 Argo 域名，支持自定义 CF 优选 IP。
+支持 **macOS** 和 **Linux**，一键生成 VMess-Argo-WS 隧道节点，支持自定义 CF 优选 IP。
 
 ---
 

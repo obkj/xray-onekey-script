@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # Xray-2go + Argo 临时隧道 一键安装脚本（无交互）
-# 基于 upstream 最新 install_argo.sh 修订：只保留 Argo VMess，优先直连 trycloudflare
+# 基于 upstream 最新 install_argo.sh 修订：只保留 Argo VMess 节点
 # =============================================================================
 
 set -euo pipefail
@@ -74,7 +74,7 @@ echo -e "${PURPLE}"
 cat << 'BANNER'
   ╔═══════════════════════════════════════════════╗
   ║     Xray-2go + Argo 临时隧道 一键安装         ║
-  ║         VMess · WebSocket · Direct First      ║
+  ║         VMess · WebSocket · Cloudflare        ║
   ╚═══════════════════════════════════════════════╝
 BANNER
 echo -e "${RESET}"
@@ -439,11 +439,11 @@ DIRECT_PORT="443"
 if $USE_CFIP; then
     NODE_ADD="${CFIP}"
     NODE_PORT="${CFPORT}"
-    NODE_NAME="${ISP}-Argo-VMess-CFIP"
+    NODE_NAME="${ISP}-Argo-VMess-CF"
 else
     NODE_ADD="${DIRECT_ADD}"
     NODE_PORT="${DIRECT_PORT}"
-    NODE_NAME="${ISP}-Argo-VMess-Direct"
+    NODE_NAME="${ISP}-Argo-VMess"
 fi
 
 VMESS_ARGO_WS="vmess://$(echo "{\"v\":\"2\",\"ps\":\"${NODE_NAME}\",\"add\":\"${NODE_ADD}\",\"port\":\"${NODE_PORT}\",\"id\":\"${UUID}\",\"aid\":\"0\",\"scy\":\"none\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${ARGO_DOMAIN}\",\"path\":\"/vmess-argo?ed=2560\",\"tls\":\"tls\",\"sni\":\"${ARGO_DOMAIN}\",\"alpn\":\"\",\"fp\":\"chrome\"}" | base64_nowrap)"
