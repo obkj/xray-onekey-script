@@ -21,7 +21,7 @@
 支持 **macOS** 和 **Linux**，自动完成所有步骤，无需人工输入。
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s))
 ```
 
 安装完成后自动输出所有节点链接，并创建快捷管理命令 `2go`。
