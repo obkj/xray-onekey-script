@@ -72,6 +72,7 @@ CFIP=1.2.3.4 CFPORT=443 sudo bash <(curl -Ls .../install_argo.sh)
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `UUID` | 随机生成 | 节点 UUID |
+| `PORT` | 随机 50000–65535 | Xray 监听端口（Argo 入口） |
 | `CFIP` | `icook.tw` | Argo 节点使用的 CF 优选 IP / 域名 |
 | `CFPORT` | `443` | Argo 节点端口 |
 

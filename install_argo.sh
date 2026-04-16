@@ -62,7 +62,7 @@ SUB_FILE="${WORK_DIR}/sub.txt"
 ARGO_LOG="${WORK_DIR}/argo.log"
 XRAY_LOG="${WORK_DIR}/xray.log"
 
-ARGO_PORT=8080   # xray 对外监听（Argo 入口）
+ARGO_PORT="${PORT:-$(awk 'BEGIN { srand(); print int(50000 + rand() * 15535) }')}" # 预设随机端口
 
 # ─── 打印 Banner ─────────────────────────────────────────────────────────────
 clear
@@ -108,14 +108,14 @@ gen_uuid() {
     fi
 }
 
-# 随机端口
+# 随机端口 (50000-65535)
 random_port() {
     if command -v shuf &>/dev/null; then
-        shuf -i 10000-60000 -n 1
+        shuf -i 50000-65535 -n 1
     elif command -v jot &>/dev/null; then
-        jot -r 1 10000 60000
+        jot -r 1 50000 65535
     else
-        awk 'BEGIN { srand(); print int(10000 + rand() * 50000) }'
+        awk 'BEGIN { srand(); print int(50000 + rand() * 15535) }'
     fi
 }
 
@@ -330,10 +330,13 @@ ok "二进制文件就绪"
 step "生成密钥和节点配置"
 
 UUID="${UUID:-$(gen_uuid)}"
-BASE_PORT="${PORT:-$(random_port)}"
+# 确保 ARGO_PORT 和 VMESS_PORT 不同
+VMESS_WS_PORT=$(random_port)
+while [[ "${VMESS_WS_PORT}" == "${ARGO_PORT}" ]]; do VMESS_WS_PORT=$(random_port); done
 
-info "UUID      : ${UUID}"
-info "Argo port : ${ARGO_PORT}"
+info "UUID           : ${UUID}"
+info "Argo Main Port : ${ARGO_PORT}"
+info "Internal Port  : ${VMESS_WS_PORT}"
 
 # 写配置文件
 cat > "${CONFIG_FILE}" << EOF
@@ -347,13 +350,13 @@ cat > "${CONFIG_FILE}" << EOF
         "clients": [{ "id": "${UUID}" }],
         "decryption": "none",
         "fallbacks": [
-          { "path": "/vmess-argo", "dest": 3003 }
+          { "path": "/vmess-argo", "dest": ${VMESS_WS_PORT} }
         ]
       },
       "streamSettings": { "network": "tcp" }
     },
     {
-      "port": 3003, "listen": "127.0.0.1", "protocol": "vmess",
+      "port": ${VMESS_WS_PORT}, "listen": "127.0.0.1", "protocol": "vmess",
       "settings": { "clients": [{ "id": "${UUID}", "alterId": 0 }] },
       "streamSettings": {
         "network": "ws",
@@ -551,53 +554,53 @@ fi
 ok "节点信息已写入: ${URL_FILE}"
 
 # ─── 创建快捷管理脚本 ────────────────────────────────────────────────────────
-cat > "${WORK_DIR}/manage.sh" << 'MANAGE'
+cat > "${WORK_DIR}/manage.sh" << MANAGE
 #!/usr/bin/env bash
 # Xray-2go 简易管理
 
-WORK_DIR="$(cd "$(dirname "$0")" && pwd)"
+WORK_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
 IS_MACOS=false
-[[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
+[[ "\$(uname -s)" == "Darwin" ]] && IS_MACOS=true
 
-case "${1:-status}" in
+case "\${1:-status}" in
     start)
-        if $IS_MACOS; then
-            "$WORK_DIR/xray" run -c "$WORK_DIR/config.json" \
-                < /dev/null > "$WORK_DIR/xray.log" 2>&1 &
-            disown $! 2>/dev/null || true
-            echo "Xray started (PID $!)"
-            "$WORK_DIR/argo" tunnel --url "http://localhost:8080" --no-autoupdate --edge-ip-version auto --protocol http2 \
-                < /dev/null > "$WORK_DIR/argo.log" 2>&1 &
-            disown $! 2>/dev/null || true
-            echo "Argo started (PID $!)"
+        if \$IS_MACOS; then
+            "\$WORK_DIR/xray" run -c "\$WORK_DIR/config.json" \
+                < /dev/null > "\$WORK_DIR/xray.log" 2>&1 &
+            disown \$! 2>/dev/null || true
+            echo "Xray started (PID \$!)"
+            "\$WORK_DIR/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol http2 \
+                < /dev/null > "\$WORK_DIR/argo.log" 2>&1 &
+            disown \$! 2>/dev/null || true
+            echo "Argo started (PID \$!)"
         else
             systemctl start xray tunnel
         fi ;;
     stop)
-        if $IS_MACOS; then
-            pkill -f "$WORK_DIR/xray run" && echo "Xray stopped" || echo "Xray not running"
-            pkill -f "$WORK_DIR/argo tunnel" && echo "Argo stopped" || echo "Argo not running"
+        if \$IS_MACOS; then
+            pkill -f "\$WORK_DIR/xray run" && echo "Xray stopped" || echo "Xray not running"
+            pkill -f "\$WORK_DIR/argo tunnel" && echo "Argo stopped" || echo "Argo not running"
         else
             systemctl stop xray tunnel
         fi ;;
     restart)
-        "$0" stop; sleep 1; "$0" start ;;
+        "\$0" stop; sleep 1; "\$0" start ;;
     status)
-        if $IS_MACOS; then
-            pgrep -f "$WORK_DIR/xray run" > /dev/null && echo "Xray: running" || echo "Xray: stopped"
-            pgrep -f "$WORK_DIR/argo tunnel" > /dev/null && echo "Argo: running" || echo "Argo: stopped"
+        if \$IS_MACOS; then
+            pgrep -f "\$WORK_DIR/xray run" > /dev/null && echo "Xray: running" || echo "Xray: stopped"
+            pgrep -f "\$WORK_DIR/argo tunnel" > /dev/null && echo "Argo: running" || echo "Argo: stopped"
         else
             systemctl status xray --no-pager -l
             systemctl status tunnel --no-pager -l
         fi ;;
     nodes)
-        cat "$WORK_DIR/url.txt" ;;
+        cat "\$WORK_DIR/url.txt" ;;
     log-xray)
-        if $IS_MACOS; then tail -50 "$WORK_DIR/xray.log"; else journalctl -u xray -n 50; fi ;;
+        if \$IS_MACOS; then tail -50 "\$WORK_DIR/xray.log"; else journalctl -u xray -n 50; fi ;;
     log-argo)
-        tail -50 "$WORK_DIR/argo.log" ;;
+        tail -50 "\$WORK_DIR/argo.log" ;;
     *)
-        echo "用法: $0 {start|stop|restart|status|nodes|log-xray|log-argo}" ;;
+        echo "用法: \$0 {start|stop|restart|status|nodes|log-xray|log-argo}" ;;
 esac
 MANAGE
 chmod +x "${WORK_DIR}/manage.sh"
