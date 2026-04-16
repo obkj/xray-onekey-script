@@ -134,6 +134,38 @@ pick_unique_port() {
     done
 }
 
+# JSON 校验与读取（优先 jq，macOS 回退 plutil，再回退 python3）
+validate_json_file() {
+    local json_file="$1"
+    if command -v jq &>/dev/null; then
+        jq empty "$json_file" >/dev/null 2>&1
+    elif $IS_MACOS && command -v plutil &>/dev/null; then
+        plutil -lint "$json_file" >/dev/null 2>&1
+    elif command -v python3 &>/dev/null; then
+        python3 -m json.tool "$json_file" >/dev/null 2>&1
+    else
+        return 1
+    fi
+}
+
+extract_first_inbound_port() {
+    local json_file="$1"
+    if command -v jq &>/dev/null; then
+        jq -r '.inbounds[0].port' "$json_file" 2>/dev/null
+    elif $IS_MACOS && command -v plutil &>/dev/null; then
+        plutil -extract inbounds.0.port raw -o - "$json_file" 2>/dev/null
+    elif command -v python3 &>/dev/null; then
+        python3 - "$json_file" <<'PY'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as f:
+    data = json.load(f)
+print(data['inbounds'][0]['port'])
+PY
+    else
+        return 1
+    fi
+}
+
 # 带进度条的下载（支持自动切换镜像）
 download_with_progress() {
     local url="$1"
@@ -230,19 +262,23 @@ ok "架构检测完成"
 step "检查并安装依赖"
 
 if $IS_MACOS; then
-    # macOS 内置 curl、unzip，检查即可
-    for cmd in curl unzip jq; do
+    for cmd in curl unzip; do
         if command -v "$cmd" &>/dev/null; then
             info "${cmd} ✓ ($(command -v "$cmd"))"
         else
-            if [[ "$cmd" == "jq" ]]; then
-                warn "jq 未安装，请先运行: brew install jq"
-                warn "继续安装，但 change_config 功能可能受限"
-            else
-                fail "依赖 ${cmd} 未找到，请手动安装"
-            fi
+            fail "依赖 ${cmd} 未找到，请手动安装"
         fi
     done
+
+    if command -v jq &>/dev/null; then
+        info "jq ✓ ($(command -v jq))"
+    elif command -v plutil &>/dev/null; then
+        info "jq 未安装，改用 plutil 做 JSON 校验"
+    elif command -v python3 &>/dev/null; then
+        info "jq 未安装，改用 python3 做 JSON 校验"
+    else
+        warn "未找到 jq/plutil/python3，JSON 校验与端口读取回退不可用"
+    fi
 else
     PKGS_NEEDED=()
     for pkg in curl unzip jq; do
@@ -447,9 +483,8 @@ cat > "${CONFIG_FILE}" << EOF
 }
 EOF
 
-if ! jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
+if ! validate_json_file "${CONFIG_FILE}"; then
     r "生成的配置文件不是合法 JSON: ${CONFIG_FILE}"
-    jq empty "${CONFIG_FILE}" 2>&1 || true
     fail "请检查配置模板中的 JSON 语法"
 fi
 
@@ -650,7 +685,7 @@ WORK_DIR="$(cd "$(dirname "$0")" && pwd)"
 IS_MACOS=false
 [[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
 
-ARGO_PORT=$(jq -r '.inbounds[0].port' "$WORK_DIR/config.json" 2>/dev/null)
+ARGO_PORT=$(extract_first_inbound_port "$WORK_DIR/config.json")
 if [[ -z "$ARGO_PORT" || "$ARGO_PORT" == "null" ]]; then
     echo "无法从 $WORK_DIR/config.json 读取 Argo 端口" >&2
     exit 1
