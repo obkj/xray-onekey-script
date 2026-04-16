@@ -281,7 +281,7 @@ if $IS_MACOS; then
     fi
 else
     PKGS_NEEDED=()
-    for pkg in curl unzip jq; do
+    for pkg in curl unzip; do
         command -v "$pkg" &>/dev/null || PKGS_NEEDED+=("$pkg")
     done
 
@@ -299,6 +299,14 @@ else
         else
             fail "无法识别的包管理器，请手动安装: ${PKGS_NEEDED[*]}"
         fi
+    fi
+
+    if command -v jq &>/dev/null; then
+        info "jq ✓ ($(command -v jq))"
+    elif command -v python3 &>/dev/null; then
+        info "jq 未安装，改用 python3 做 JSON 校验"
+    else
+        warn "未找到 jq/python3，JSON 校验与端口读取回退不可用"
     fi
 fi
 
@@ -684,6 +692,24 @@ cat > "${WORK_DIR}/manage.sh" << 'MANAGE'
 WORK_DIR="$(cd "$(dirname "$0")" && pwd)"
 IS_MACOS=false
 [[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
+
+extract_first_inbound_port() {
+    local json_file="$1"
+    if command -v jq &>/dev/null; then
+        jq -r '.inbounds[0].port' "$json_file" 2>/dev/null
+    elif $IS_MACOS && command -v plutil &>/dev/null; then
+        plutil -extract inbounds.0.port raw -o - "$json_file" 2>/dev/null
+    elif command -v python3 &>/dev/null; then
+        python3 - "$json_file" <<'PY'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as f:
+    data = json.load(f)
+print(data['inbounds'][0]['port'])
+PY
+    else
+        return 1
+    fi
+}
 
 ARGO_PORT=$(extract_first_inbound_port "$WORK_DIR/config.json")
 if [[ -z "$ARGO_PORT" || "$ARGO_PORT" == "null" ]]; then
