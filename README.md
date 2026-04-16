@@ -82,8 +82,8 @@ CFIP=1.2.3.4 CFPORT=443 bash <(curl -Ls .../install_argo.sh)
 
 | 路径 | 说明 |
 |------|------|
-| `/usr/local/etc/xray/` (macOS) | 安装目录 |
-| `/etc/xray/` (Linux) | 安装目录 |
+| `/usr/local/etc/xray-argo/` (macOS) | 安装目录 |
+| `/etc/xray-argo/` (Linux) | 安装目录 |
 | `…/config.json` | Xray 配置文件 |
 | `…/url.txt` | 节点链接文本 |
 | `…/argo.log` | Argo 日志（含临时域名） |

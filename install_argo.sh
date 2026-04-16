@@ -52,10 +52,10 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 if $IS_MACOS; then
-    WORK_DIR="/usr/local/etc/xray"
+    WORK_DIR="/usr/local/etc/xray-argo"
     BIN_PATH="/usr/local/bin/2go"
 else
-    WORK_DIR="/etc/xray"
+    WORK_DIR="/etc/xray-argo"
     BIN_PATH="/usr/bin/2go"
 fi
 
