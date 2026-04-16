@@ -447,6 +447,12 @@ cat > "${CONFIG_FILE}" << EOF
 }
 EOF
 
+if ! jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
+    r "生成的配置文件不是合法 JSON: ${CONFIG_FILE}"
+    jq empty "${CONFIG_FILE}" 2>&1 || true
+    fail "请检查配置模板中的 JSON 语法"
+fi
+
 ok "配置文件生成完成: ${CONFIG_FILE}"
 
 # ─── Step 8: 启动 Xray ───────────────────────────────────────────────────────
