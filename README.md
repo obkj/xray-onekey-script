@@ -1,17 +1,9 @@
-# xray-onekey-script
-
-一键部署 Xray-core + Cloudflare Argo 临时隧道，无需交互，全程自动完成。
-
-支持 **macOS** 和 **Linux**，生成 VLESS-Reality、VLESS-Argo-WS、VMess-Argo-WS 四条节点。
+支持 **macOS** 和 **Linux**，生成 VLESS-Argo-WS、VMess-Argo-WS 两条隧道节点。
 
 ---
 
-## 节点类型
-
 | 节点 | 协议 | 传输 | 穿透 | 说明 |
 |------|------|------|------|------|
-| Reality gRPC | VLESS | gRPC | 直连 | 抗封锁，需直连可用 |
-| Reality xHTTP | VLESS | xHTTP | 直连 | 新型传输，需直连可用 |
 | Argo VLESS-WS | VLESS | WebSocket | Cloudflare CDN | 国内稳定，走优选 IP |
 | Argo VMess-WS | VMess | WebSocket | Cloudflare CDN | 兼容性最广，走优选 IP |
 
@@ -39,12 +31,9 @@ bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/i
 
 ---
 
-## 平台支持
-
 | 功能 | macOS | Linux |
 |------|:-----:|:-----:|
 | Xray 安装 | ✅ | ✅ |
-| Reality 节点 | ✅ | ✅ |
 | Argo 临时隧道 | ✅ | ✅ |
 | Argo 固定隧道 | ❌ | ✅ |
 | Caddy 订阅服务 | ❌ | ✅ |
@@ -84,7 +73,6 @@ CFIP=1.2.3.4 CFPORT=443 sudo bash <(curl -Ls .../install_argo.sh)
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `UUID` | 随机生成 | 节点 UUID |
-| `PORT` | 随机 10000–60000 | Reality 基础端口（gRPC=PORT, xHTTP=PORT+1） |
 | `CFIP` | `icook.tw` | Argo 节点使用的 CF 优选 IP / 域名 |
 | `CFPORT` | `443` | Argo 节点端口 |
 
