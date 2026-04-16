@@ -1,10 +1,10 @@
-支持 **macOS** 和 **Linux**，生成 VMess-Argo-WS 隧道节点。
+支持 **macOS** 和 **Linux**，生成 VMess-Argo-WS 隧道节点。采用 **Direct First** 策略，默认直连 Argo 域名，支持自定义 CF 优选 IP。
 
 ---
 
 | 节点 | 协议 | 传输 | 穿透 | 说明 |
 |------|------|------|------|------|
-| Argo VMess-WS | VMess | WebSocket | Cloudflare CDN | 兼容性最广泛，走优选 IP |
+| Argo VMess-WS | VMess | WebSocket | Cloudflare Tunnel | 默认直连域名，可选优选 IP |
 
 ---
 
@@ -72,9 +72,9 @@ CFIP=1.2.3.4 CFPORT=443 bash <(curl -Ls .../install_argo.sh)
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `UUID` | 随机生成 | 节点 UUID |
-| `PORT` | 随机 50000–65535 | Xray 监听端口（Argo 入口） |
-| `CFIP` | `icook.tw` | Argo 节点使用的 CF 优选 IP / 域名 |
-| `CFPORT` | `443` | Argo 节点端口 |
+| `PORT` | 随机 50000–65535 | Xray 内部监听端口 |
+| `CFIP` | (空) | 若为空则直连 Argo 域名；若指定则使用该优选 IP |
+| `CFPORT` | `443` | 配合 `CFIP` 使用的端口 |
 
 ---
 
