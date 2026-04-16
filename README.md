@@ -69,10 +69,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/i
 
 ```bash
 # 示例：指定 UUID 和端口
-UUID=your-uuid PORT=12345 bash <(curl -Ls .../install_argo.sh)
+UUID=your-uuid PORT=12345 bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s))
 
 # 示例：自定义 CDN 优选 IP
-CFIP=1.2.3.4 CFPORT=443 bash <(curl -Ls .../install_argo.sh)
+CFIP=1.2.3.4 CFPORT=443 bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s))
 ```
 
 | 变量 | 默认值 | 说明 |
