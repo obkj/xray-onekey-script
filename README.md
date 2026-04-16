@@ -2,7 +2,7 @@
 
 一键部署 Xray-core + Cloudflare Argo 临时隧道，无需交互，全程自动完成。
 
-支持 **macOS** 和 **Linux**，生成 VLESS-Reality、VLESS-Argo-WS、VMess-Argo-WS 四条节点。
+支持 **macOS** 和 **Linux**，生成 Reality gRPC、Reality xHTTP、Argo VMess-WS 三类节点。
 
 ---
 
@@ -12,7 +12,6 @@
 |------|------|------|------|------|
 | Reality gRPC | VLESS | gRPC | 直连 | 抗封锁，需直连可用 |
 | Reality xHTTP | VLESS | xHTTP | 直连 | 新型传输，需直连可用 |
-| Argo VLESS-WS | VLESS | WebSocket | Cloudflare CDN | 国内稳定，走优选 IP |
 | Argo VMess-WS | VMess | WebSocket | Cloudflare CDN | 兼容性最广，走优选 IP |
 
 ---
@@ -58,14 +57,21 @@ bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/i
 安装完成后可使用 `2go` 命令进行管理：
 
 ```bash
-2go status     # 查看 Xray / Argo 运行状态
-2go nodes      # 显示所有节点链接
-2go start      # 启动服务
-2go stop       # 停止服务
-2go restart    # 重启服务
-2go log-xray   # 查看 Xray 日志
-2go log-argo   # 查看 Argo 日志（含临时域名）
+2go status             # 查看 Xray / Argo 运行状态
+2go nodes              # 显示所有节点链接
+2go start              # 启动服务
+2go stop               # 停止服务
+2go restart            # 重启服务
+2go log-xray           # 查看 Xray 日志
+2go log-argo           # 查看 Argo 日志（含临时域名）
+2go uninstall          # 卸载服务与安装目录（交互确认）
+2go uninstall --force  # 强制卸载，不再二次确认
 ```
+
+卸载时会停止 Xray / Argo，清理快捷命令 `2go`、相关服务文件，以及安装目录：
+
+- macOS: `/usr/local/etc/xray`、`/usr/local/bin/2go`
+- Linux: `/etc/xray`、`/usr/bin/2go`、`/etc/systemd/system/xray.service`、`/etc/systemd/system/tunnel.service`
 
 ---
 
@@ -74,7 +80,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/i
 运行前可通过环境变量覆盖默认值：
 
 ```bash
-# 示例：指定 UUID 和端口
+# 示例：指定 UUID 和基础端口（Reality gRPC 使用该端口，其他端口自动随机高位分配）
 UUID=your-uuid PORT=12345 sudo bash <(curl -Ls .../install_argo.sh)
 
 # 示例：自定义 CDN 优选 IP
@@ -84,7 +90,7 @@ CFIP=1.2.3.4 CFPORT=443 sudo bash <(curl -Ls .../install_argo.sh)
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `UUID` | 随机生成 | 节点 UUID |
-| `PORT` | 随机 10000–60000 | Reality 基础端口（gRPC=PORT, xHTTP=PORT+1） |
+| `PORT` | 随机 10000–60000 | Reality gRPC 端口；其余监听端口自动随机高位分配 |
 | `CFIP` | `icook.tw` | Argo 节点使用的 CF 优选 IP / 域名 |
 | `CFPORT` | `443` | Argo 节点端口 |
 
@@ -100,3 +106,4 @@ CFIP=1.2.3.4 CFPORT=443 sudo bash <(curl -Ls .../install_argo.sh)
 | `…/url.txt` | 节点链接文本 |
 | `…/argo.log` | Argo 日志（含临时域名） |
 | `…/xray.log` | Xray 运行日志 |
+| `…/manage.sh` | `2go` 管理脚本 |

@@ -703,6 +703,14 @@ done
 WORK_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 IS_MACOS=false
 [[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
+COMMAND="${1:-status}"
+FORCE=false
+if [[ "${1:-}" == "--force" ]]; then
+    FORCE=true
+    COMMAND="${2:-status}"
+elif [[ "${2:-}" == "--force" ]]; then
+    FORCE=true
+fi
 
 extract_first_inbound_port() {
     local json_file="$1"
@@ -722,14 +730,47 @@ PY
     fi
 }
 
-ARGO_PORT=$(extract_first_inbound_port "$WORK_DIR/config.json")
-if [[ -z "$ARGO_PORT" || "$ARGO_PORT" == "null" ]]; then
-    echo "无法从 $WORK_DIR/config.json 读取 Argo 端口" >&2
-    exit 1
-fi
+require_argo_port() {
+    ARGO_PORT=$(extract_first_inbound_port "$WORK_DIR/config.json")
+    if [[ -z "$ARGO_PORT" || "$ARGO_PORT" == "null" ]]; then
+        echo "无法从 $WORK_DIR/config.json 读取 Argo 端口" >&2
+        exit 1
+    fi
+}
 
-case "${1:-status}" in
+confirm_uninstall() {
+    if $FORCE; then
+        return 0
+    fi
+    printf '确认删除 Xray-2go 安装目录及相关服务？[y/N] '
+    read -r answer
+    [[ "$answer" == "y" || "$answer" == "Y" ]]
+}
+
+uninstall_all() {
+    if ! confirm_uninstall; then
+        echo "已取消卸载"
+        exit 0
+    fi
+
+    if $IS_MACOS; then
+        pkill -f "$WORK_DIR/xray run" 2>/dev/null || true
+        pkill -f "$WORK_DIR/argo tunnel" 2>/dev/null || true
+    else
+        systemctl stop xray tunnel 2>/dev/null || true
+        systemctl disable xray tunnel 2>/dev/null || true
+        rm -f /etc/systemd/system/xray.service /etc/systemd/system/tunnel.service
+        systemctl daemon-reload 2>/dev/null || true
+    fi
+
+    rm -f /usr/local/bin/2go /usr/bin/2go
+    rm -rf "$WORK_DIR"
+    echo "Xray-2go 已卸载"
+}
+
+case "$COMMAND" in
     start)
+        require_argo_port
         if $IS_MACOS; then
             "$WORK_DIR/xray" run -c "$WORK_DIR/config.json" \
                 < /dev/null > "$WORK_DIR/xray.log" 2>&1 &
@@ -765,15 +806,17 @@ case "${1:-status}" in
         if $IS_MACOS; then tail -50 "$WORK_DIR/xray.log"; else journalctl -u xray -n 50; fi ;;
     log-argo)
         tail -50 "$WORK_DIR/argo.log" ;;
+    uninstall)
+        uninstall_all ;;
     *)
-        echo "用法: $0 {start|stop|restart|status|nodes|log-xray|log-argo}" ;;
+        echo "用法: $0 {start|stop|restart|status|nodes|log-xray|log-argo|uninstall [--force]}" ;;
 esac
 MANAGE
 chmod +x "${WORK_DIR}/manage.sh"
 
 # 创建全局快捷命令
 ln -sf "${WORK_DIR}/manage.sh" "${BIN_PATH}" 2>/dev/null || true
-[[ -L "${BIN_PATH}" ]] && ok "快捷命令已创建: 2go {start|stop|restart|status|nodes|log-xray|log-argo}"
+[[ -L "${BIN_PATH}" ]] && ok "快捷命令已创建: 2go {start|stop|restart|status|nodes|log-xray|log-argo|uninstall}"
 
 # ─── 输出最终摘要 ─────────────────────────────────────────────────────────────
 echo ""
@@ -806,6 +849,7 @@ echo -e "  ${GREEN}2go status${RESET}    查看运行状态"
 echo -e "  ${GREEN}2go nodes${RESET}     查看节点链接"
 echo -e "  ${GREEN}2go restart${RESET}   重启服务"
 echo -e "  ${GREEN}2go log-argo${RESET}  查看 Argo 日志（含域名）"
+echo -e "  ${GREEN}2go uninstall${RESET} 卸载服务与安装目录"
 echo ""
 
 if $IS_MACOS; then
