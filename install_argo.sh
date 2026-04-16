@@ -360,7 +360,7 @@ cat > "${CONFIG_FILE}" << EOF
       "port": ${ARGO_PORT},
       "protocol": "vless",
       "settings": {
-        "clients": [{ "id": "${UUID}", "flow": "xtls-rprx-vision" }],
+        "clients": [{ "id": "${UUID}" }],
         "decryption": "none",
         "fallbacks": [
           { "dest": 3001 },
