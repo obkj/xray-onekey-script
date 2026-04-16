@@ -582,3 +582,8 @@ if $IS_MACOS; then
     echo -e "${YELLOW}   如需开机自启，可将以下内容加入 /etc/rc.local 或配置 launchd${RESET}"
     echo ""
 fi
+
+# 自动清理脚本自身
+if [[ -f "$0" && "$0" == *"install_argo.sh"* ]]; then
+    rm -f "$0"
+fi
