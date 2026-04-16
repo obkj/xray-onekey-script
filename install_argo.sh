@@ -477,7 +477,7 @@ else
     NODE_NAME="${ISP}-Argo-VMess"
 fi
 
-VMESS_ARGO_WS="vmess://$(echo "{\"v\":\"2\",\"ps\":\"${NODE_NAME}\",\"add\":\"${NODE_ADD}\",\"port\":\"${NODE_PORT}\",\"id\":\"${UUID}\",\"aid\":\"0\",\"scy\":\"none\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${ARGO_DOMAIN}\",\"path\":\"/vmess-argo?ed=2560\",\"tls\":\"tls\",\"sni\":\"${ARGO_DOMAIN}\",\"alpn\":\"\",\"fp\":\"chrome\"}" | base64_nowrap)"
+VMESS_ARGO_WS="vmess://$(echo "{\"v\":\"2\",\"ps\":\"${NODE_NAME}\",\"add\":\"${NODE_ADD}\",\"port\":\"${NODE_PORT}\",\"id\":\"${UUID}\",\"aid\":\"0\",\"scy\":\"aes-128-gcm\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${ARGO_DOMAIN}\",\"path\":\"/vmess-argo?ed=2560\",\"tls\":\"tls\",\"sni\":\"${ARGO_DOMAIN}\",\"alpn\":\"\",\"fp\":\"chrome\",\"insecure\":\"0\"}" | base64_nowrap)"
 
 cat > "${URL_FILE}" << URLEOF
 ${VMESS_ARGO_WS}
