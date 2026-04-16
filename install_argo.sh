@@ -365,31 +365,52 @@ SVCEOF
 fi
 
 step "启动 Argo 临时隧道 & 获取域名"
-rm -f "${ARGO_LOG}"
-"${WORK_DIR}/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol auto < /dev/null > "${ARGO_LOG}" 2>&1 &
-ARGO_PID=$!
-disown "$ARGO_PID" 2>/dev/null || true
-info "Argo PID: ${ARGO_PID}"
-info "正在等待 trycloudflare.com 临时域名分配..."
-
+MAX_ARGO_RETRIES=5
+ARGO_RETRY_COUNT=0
 ARGO_DOMAIN=""
-for i in $(seq 1 20); do
-    sleep 2
-    ARGO_DOMAIN=$(sed -n 's|.*https://\([^/]*trycloudflare\.com\).*|\1|p' "${ARGO_LOG}" 2>/dev/null | tail -1)
+
+while [[ $ARGO_RETRY_COUNT -lt $MAX_ARGO_RETRIES ]]; do
+    ARGO_RETRY_COUNT=$((ARGO_RETRY_COUNT + 1))
+    [[ $ARGO_RETRY_COUNT -gt 1 ]] && warn "正在重试 [${ARGO_RETRY_COUNT}/${MAX_ARGO_RETRIES}]..."
+    
+    rm -f "${ARGO_LOG}"
+    # 启动进程
+    "${WORK_DIR}/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol auto < /dev/null > "${ARGO_LOG}" 2>&1 &
+    ARGO_PID=$!
+    disown "$ARGO_PID" 2>/dev/null || true
+    
+    # 1. 首先等待日志中出现域名
+    for i in $(seq 1 15); do
+        sleep 2
+        ARGO_DOMAIN=$(sed -n 's|.*https://\([^/]*trycloudflare\.com\).*|\1|p' "${ARGO_LOG}" 2>/dev/null | tail -1)
+        [[ -n "${ARGO_DOMAIN}" ]] && break
+        printf "\r  ${CYAN}│  等待域名展示... %ds${RESET}" $((i*2))
+    done
+    echo ""
+
     if [[ -n "${ARGO_DOMAIN}" ]]; then
-        break
+        info "已获域名: ${ARGO_DOMAIN}，正在检测连通性 (需 5-10s)..."
+        sleep 5
+        # 2. 探测域名健康状况 (530/1033 是典型的隧道未就绪错误)
+        HTTP_CODE=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 10 "https://${ARGO_DOMAIN}" || echo "000")
+        if [[ "${HTTP_CODE}" == "530" ]] || [[ "${HTTP_CODE}" == "1033" ]] || [[ "${HTTP_CODE}" == "000" ]]; then
+            warn "探测失败 (HTTP ${HTTP_CODE})，由于隧道建立缓慢或网络受阻，正在重启..."
+            kill "$ARGO_PID" 2>/dev/null || true
+            sleep 3
+            ARGO_DOMAIN=""
+        else
+            ok "连通性检测通过 (HTTP ${HTTP_CODE})"
+            break
+        fi
+    else
+        warn "未能从日志中提取到域名，正在重启..."
+        kill "$ARGO_PID" 2>/dev/null || true
+        sleep 2
     fi
-    printf "\r  ${CYAN}│  等待域名... %ds${RESET}" $((i*2))
 done
-echo ""
 
 if [[ -z "${ARGO_DOMAIN}" ]]; then
-    warn "未能在 40 秒内获取 Argo 临时域名"
-    warn "可能原因: 网络不通 Cloudflare 或已达速率限制"
-    warn "请稍后查看: ${ARGO_LOG}"
-    ARGO_DOMAIN="<argo-domain-pending>"
-else
-    ok "Argo 临时域名: ${ARGO_DOMAIN}"
+    fail "在 ${MAX_ARGO_RETRIES} 次尝试后仍未能建立健康的隧道，请检查网络或稍后重试"
 fi
 
 if ! $IS_MACOS && $HAS_SYSTEMD; then
