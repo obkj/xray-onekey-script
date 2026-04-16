@@ -21,7 +21,7 @@
 支持 **macOS** 和 **Linux**，自动完成所有步骤，无需人工输入。
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s))
+wget -N https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s) && chmod +x install_argo.sh && ./install_argo.sh
 ```
 
 安装完成后自动输出所有节点链接，并创建快捷管理命令 `2go`。
@@ -69,10 +69,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/i
 
 ```bash
 # 示例：指定 UUID 和端口
-UUID=your-uuid PORT=12345 bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s))
+UUID=your-uuid PORT=12345 wget -N https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s) && chmod +x install_argo.sh && ./install_argo.sh
 
 # 示例：自定义 CDN 优选 IP
-CFIP=1.2.3.4 CFPORT=443 bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s))
+CFIP=1.2.3.4 CFPORT=443 wget -N https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s) && chmod +x install_argo.sh && ./install_argo.sh
 ```
 
 | 变量 | 默认值 | 说明 |

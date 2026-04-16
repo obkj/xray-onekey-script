@@ -44,7 +44,11 @@ if [[ $EUID -ne 0 ]]; then
         if [[ -f "$0" ]]; then
             exec sudo bash "$0" "$@"
         else
-            exec sudo bash -c "$(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s))" -- "$@"
+            # 处理通过管道或 curl 运行的情况：下载到临时文件后提权运行
+            TMP_SCRIPT=$(mktemp)
+            curl -H "Cache-Control: no-cache" -Ls "https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s)" -o "$TMP_SCRIPT"
+            chmod +x "$TMP_SCRIPT"
+            exec sudo "$TMP_SCRIPT" "$@"
         fi
     else
         fail "本脚本需要 root 权限，且未找到 sudo，请手动切换到 root 用户运行。"
