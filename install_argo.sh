@@ -391,9 +391,9 @@ while [[ $ARGO_RETRY_COUNT -lt $MAX_ARGO_RETRIES ]]; do
     if [[ -n "${ARGO_DOMAIN}" ]]; then
         info "已获域名: ${ARGO_DOMAIN}，正在检测连通性 (需 5-10s)..."
         sleep 5
-        # 2. 探测域名健康状况 (530/1033/502/504 是典型的未就绪错误)
+        # 2. 探测域名健康状况 (仅针对 530 隧道未就绪错误进行重试)
         HTTP_CODE=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 10 "https://${ARGO_DOMAIN}" || echo "000")
-        if [[ "${HTTP_CODE}" == "530" ]] || [[ "${HTTP_CODE}" == "1033" ]] || [[ "${HTTP_CODE}" == "502" ]] || [[ "${HTTP_CODE}" == "504" ]] || [[ "${HTTP_CODE}" == "000" ]]; then
+        if [[ "${HTTP_CODE}" == "530" ]]; then
             warn "探测失败 (HTTP ${HTTP_CODE})，由于隧道建立缓慢或网络受阻，正在重启..."
             kill "$ARGO_PID" 2>/dev/null || true
             sleep 3
