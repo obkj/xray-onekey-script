@@ -69,8 +69,8 @@ clear
 echo -e "${PURPLE}"
 cat << 'BANNER'
   ╔═══════════════════════════════════════════════╗
-  ║     Xray-2go + Argo 临时隧道  一键安装        ║
-  ║     VLESS / VMess · Reality · WebSocket       ║
+  ║     Xray-2go + Argo 临时隧道 一键安装         ║
+  ║     VLESS / VMess · WebSocket · CDN           ║
   ╚═══════════════════════════════════════════════╝
 BANNER
 echo -e "${RESET}"
@@ -331,25 +331,9 @@ step "生成密钥和节点配置"
 
 UUID="${UUID:-$(gen_uuid)}"
 BASE_PORT="${PORT:-$(random_port)}"
-GRPC_PORT=$((BASE_PORT))
-XHTTP_PORT=$((BASE_PORT + 1))
 
 info "UUID      : ${UUID}"
-info "gRPC port : ${GRPC_PORT}"
-info "xHTTP port: ${XHTTP_PORT}"
 info "Argo port : ${ARGO_PORT}"
-
-# 生成 x25519 密钥对
-info "生成 Reality x25519 密钥对..."
-X25519_OUT=$("${WORK_DIR}/xray" x25519 2>/dev/null)
-PRIVATE_KEY=$(echo "${X25519_OUT}" | grep -i 'private' | awk '{print $NF}')
-PUBLIC_KEY=$(echo "${X25519_OUT}"  | grep -i 'public'  | awk '{print $NF}')
-
-if [[ -z "${PRIVATE_KEY}" ]] || [[ -z "${PUBLIC_KEY}" ]]; then
-    fail "x25519 密钥生成失败，请检查 xray 二进制是否正常"
-fi
-info "私钥 (私有): ${PRIVATE_KEY:0:8}...${PRIVATE_KEY: -4}"
-info "公钥 (节点): ${PUBLIC_KEY:0:8}...${PUBLIC_KEY: -4}"
 
 # 写配置文件
 cat > "${CONFIG_FILE}" << EOF
@@ -360,7 +344,7 @@ cat > "${CONFIG_FILE}" << EOF
       "port": ${ARGO_PORT},
       "protocol": "vless",
       "settings": {
-        "clients": [{ "id": "${UUID}", "flow": "xtls-rprx-vision" }],
+        "clients": [{ "id": "${UUID}" }],
         "decryption": "none",
         "fallbacks": [
           { "dest": 3001 },
@@ -390,38 +374,6 @@ cat > "${CONFIG_FILE}" << EOF
       "streamSettings": {
         "network": "ws",
         "wsSettings": { "path": "/vmess-argo" }
-      },
-      "sniffing": { "enabled": true, "destOverride": ["http","tls","quic"] }
-    },
-    {
-      "listen": "::", "port": ${XHTTP_PORT}, "protocol": "vless",
-      "settings": { "clients": [{ "id": "${UUID}" }], "decryption": "none" },
-      "streamSettings": {
-        "network": "xhttp",
-        "security": "reality",
-        "realitySettings": {
-          "target": "www.nazhumi.com:443",
-          "xver": 0,
-          "serverNames": ["www.nazhumi.com"],
-          "privateKey": "${PRIVATE_KEY}",
-          "shortIds": [""]
-        }
-      },
-      "sniffing": { "enabled": true, "destOverride": ["http","tls","quic"] }
-    },
-    {
-      "listen": "::", "port": ${GRPC_PORT}, "protocol": "vless",
-      "settings": { "clients": [{ "id": "${UUID}" }], "decryption": "none" },
-      "streamSettings": {
-        "network": "grpc",
-        "security": "reality",
-        "realitySettings": {
-          "dest": "www.iij.ad.jp:443",
-          "serverNames": ["www.iij.ad.jp"],
-          "privateKey": "${PRIVATE_KEY}",
-          "shortIds": [""]
-        },
-        "grpcSettings": { "serviceName": "grpc" }
       },
       "sniffing": { "enabled": true, "destOverride": ["http","tls","quic"] }
     }
@@ -600,20 +552,12 @@ ISP=$(curl -sm 4 -H "User-Agent: Mozilla" "https://api.ip.sb/geoip" 2>/dev/null 
 info "ISP: ${ISP}"
 
 # 生成节点链接
-VLESS_REALITY_GRPC="vless://${UUID}@${PUBLIC_IP}:${GRPC_PORT}?encryption=none&security=reality&sni=www.iij.ad.jp&fp=chrome&pbk=${PUBLIC_KEY}&allowInsecure=1&type=grpc&authority=www.iij.ad.jp&serviceName=grpc&mode=gun#${ISP}-gRPC"
-
-VLESS_REALITY_XHTTP="vless://${UUID}@${PUBLIC_IP}:${XHTTP_PORT}?encryption=none&security=reality&sni=www.nazhumi.com&fp=chrome&pbk=${PUBLIC_KEY}&allowInsecure=1&type=xhttp&mode=auto#${ISP}-xHTTP"
-
 VLESS_ARGO_WS="vless://${UUID}@${CFIP}:${CFPORT}?encryption=none&security=tls&sni=${ARGO_DOMAIN}&fp=chrome&type=ws&host=${ARGO_DOMAIN}&path=%2Fvless-argo%3Fed%3D2560#${ISP}-Argo-WS"
 
 VMESS_ARGO_WS="vmess://$(echo "{\"v\":\"2\",\"ps\":\"${ISP}-Argo-VMess\",\"add\":\"${CFIP}\",\"port\":\"${CFPORT}\",\"id\":\"${UUID}\",\"aid\":\"0\",\"scy\":\"none\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${ARGO_DOMAIN}\",\"path\":\"/vmess-argo?ed=2560\",\"tls\":\"tls\",\"sni\":\"${ARGO_DOMAIN}\",\"alpn\":\"\",\"fp\":\"chrome\"}" | base64_nowrap)"
 
 # 写入文件
 cat > "${URL_FILE}" << URLEOF
-${VLESS_REALITY_GRPC}
-
-${VLESS_REALITY_XHTTP}
-
 ${VLESS_ARGO_WS}
 
 ${VMESS_ARGO_WS}
@@ -698,12 +642,6 @@ echo -e "${CYAN}║${RESET}${BOLD}  节点链接                                
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${RESET}"
 echo ""
 
-echo -e "${YELLOW}── Reality gRPC ──────────────────────────────────────────────${RESET}"
-echo -e "${PURPLE}${VLESS_REALITY_GRPC}${RESET}"
-echo ""
-echo -e "${YELLOW}── Reality xHTTP ─────────────────────────────────────────────${RESET}"
-echo -e "${PURPLE}${VLESS_REALITY_XHTTP}${RESET}"
-echo ""
 echo -e "${YELLOW}── Argo VLESS-WS (CDN 优选 IP) ───────────────────────────────${RESET}"
 echo -e "${PURPLE}${VLESS_ARGO_WS}${RESET}"
 echo ""
