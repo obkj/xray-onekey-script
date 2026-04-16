@@ -39,12 +39,19 @@ IS_MACOS=false
 
 [[ "${OS_NAME}" == "Darwin" ]] && IS_MACOS=true
 
-# root 检查
+# root 检查与自动授权
 if [[ $EUID -ne 0 ]]; then
-    r "错误：请以 root 权限运行此脚本"
-    r "macOS 请用: sudo bash install_argo.sh"
-    r "Linux  请用: sudo bash install_argo.sh"
-    exit 1
+    if command -v sudo >/dev/null 2>&1; then
+        warn "检测到非 root 用户，正在尝试通过 sudo 获取权限..."
+        if [[ -f "$0" ]]; then
+            exec sudo bash "$0" "$@"
+        else
+            # 处理通过 curl 管道运行的情况
+            exec sudo bash -c "$(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh)" -- "$@"
+        fi
+    else
+        fail "本脚本需要 root 权限，且未找到 sudo，请手动切换到 root 用户运行。"
+    fi
 fi
 
 # ─── 目录 & 常量 ─────────────────────────────────────────────────────────────
