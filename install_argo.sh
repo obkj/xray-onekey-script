@@ -293,7 +293,8 @@ cat > "${CONFIG_FILE}" << EOF
         "clients": [{ "id": "${UUID}" }],
         "decryption": "none",
         "fallbacks": [
-          { "path": "/vmess-argo", "dest": ${VMESS_WS_PORT} }
+          { "path": "/vmess-argo", "dest": ${VMESS_WS_PORT} },
+          { "dest": 80 }
         ]
       },
       "streamSettings": { "network": "tcp" }
@@ -365,7 +366,7 @@ fi
 
 step "启动 Argo 临时隧道 & 获取域名"
 rm -f "${ARGO_LOG}"
-"${WORK_DIR}/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol http2 < /dev/null > "${ARGO_LOG}" 2>&1 &
+"${WORK_DIR}/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol auto < /dev/null > "${ARGO_LOG}" 2>&1 &
 ARGO_PID=$!
 disown "$ARGO_PID" 2>/dev/null || true
 info "Argo PID: ${ARGO_PID}"
@@ -401,7 +402,7 @@ After=network.target
 Type=simple
 NoNewPrivileges=yes
 TimeoutStartSec=0
-ExecStart=${WORK_DIR}/argo tunnel --url http://localhost:${ARGO_PORT} --no-autoupdate --edge-ip-version auto --protocol http2
+ExecStart=${WORK_DIR}/argo tunnel --url http://localhost:${ARGO_PORT} --no-autoupdate --edge-ip-version auto --protocol auto
 StandardOutput=append:${ARGO_LOG}
 Restart=on-failure
 RestartSec=5s
@@ -469,7 +470,7 @@ case "\${1:-status}" in
         if \$IS_MACOS || ! \$HAS_SYSTEMD; then
             "\$WORK_DIR/xray" run -c "\$WORK_DIR/config.json" < /dev/null > "\$WORK_DIR/xray.log" 2>&1 &
             disown \$! 2>/dev/null || true
-            "\$WORK_DIR/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol http2 < /dev/null > "\$WORK_DIR/argo.log" 2>&1 &
+            "\$WORK_DIR/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol auto < /dev/null > "\$WORK_DIR/argo.log" 2>&1 &
             disown \$! 2>/dev/null || true
         else
             systemctl start xray tunnel
