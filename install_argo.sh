@@ -62,8 +62,6 @@ SUB_FILE="${WORK_DIR}/sub.txt"
 ARGO_LOG="${WORK_DIR}/argo.log"
 XRAY_LOG="${WORK_DIR}/xray.log"
 
-ARGO_PORT=8080   # xray 对外监听（Argo 入口）
-
 # ─── 打印 Banner ─────────────────────────────────────────────────────────────
 clear
 echo -e "${PURPLE}"
@@ -117,6 +115,23 @@ random_port() {
     else
         awk 'BEGIN { srand(); print int(10000 + rand() * 50000) }'
     fi
+}
+
+# 生成随机高位且尽量不冲突的端口
+pick_unique_port() {
+    local used_ports="$1"
+    local port
+    while true; do
+        port=$(random_port)
+        [[ ",${used_ports}," == *",${port},"* ]] && continue
+        if command -v ss &>/dev/null; then
+            ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|[\[\]:])${port}$" && continue
+        elif command -v netstat &>/dev/null; then
+            netstat -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|[\[\]:])${port}$" && continue
+        fi
+        printf '%s' "$port"
+        return 0
+    done
 }
 
 # 带进度条的下载（支持自动切换镜像）
@@ -330,14 +345,22 @@ ok "二进制文件就绪"
 step "生成密钥和节点配置"
 
 UUID="${UUID:-$(gen_uuid)}"
-BASE_PORT="${PORT:-$(random_port)}"
-GRPC_PORT=$((BASE_PORT))
-XHTTP_PORT=$((BASE_PORT + 1))
+GRPC_PORT="${PORT:-$(pick_unique_port "")}"
+USED_PORTS="${GRPC_PORT}"
+XHTTP_PORT=$(pick_unique_port "${USED_PORTS}")
+USED_PORTS="${USED_PORTS},${XHTTP_PORT}"
+ARGO_PORT=$(pick_unique_port "${USED_PORTS}")
+USED_PORTS="${USED_PORTS},${ARGO_PORT}"
+ARGO_FALLBACK_PORT=$(pick_unique_port "${USED_PORTS}")
+USED_PORTS="${USED_PORTS},${ARGO_FALLBACK_PORT}"
+VMESS_WS_PORT=$(pick_unique_port "${USED_PORTS}")
 
 info "UUID      : ${UUID}"
 info "gRPC port : ${GRPC_PORT}"
 info "xHTTP port: ${XHTTP_PORT}"
 info "Argo port : ${ARGO_PORT}"
+info "VMess WS  : ${VMESS_WS_PORT}"
+info "Fallback  : ${ARGO_FALLBACK_PORT}"
 
 # 生成 x25519 密钥对
 info "生成 Reality x25519 密钥对..."
@@ -360,32 +383,22 @@ cat > "${CONFIG_FILE}" << EOF
       "port": ${ARGO_PORT},
       "protocol": "vless",
       "settings": {
-        "clients": [{ "id": "${UUID}" }],
+        "clients": [{ "id": "${UUID}", "flow": "xtls-rprx-vision" }],
         "decryption": "none",
         "fallbacks": [
-          { "dest": 3001 },
-          { "path": "/vless-argo", "dest": 3002 },
-          { "path": "/vmess-argo", "dest": 3003 }
+          { "dest": ${ARGO_FALLBACK_PORT} },
+          { "path": "/vmess-argo", "dest": ${VMESS_WS_PORT} }
         ]
       },
       "streamSettings": { "network": "tcp" }
     },
     {
-      "port": 3001, "listen": "127.0.0.1", "protocol": "vless",
+      "port": ${ARGO_FALLBACK_PORT}, "listen": "127.0.0.1", "protocol": "vless",
       "settings": { "clients": [{ "id": "${UUID}" }], "decryption": "none" },
       "streamSettings": { "network": "tcp", "security": "none" }
     },
     {
-      "port": 3002, "listen": "127.0.0.1", "protocol": "vless",
-      "settings": { "clients": [{ "id": "${UUID}", "level": 0 }], "decryption": "none" },
-      "streamSettings": {
-        "network": "ws", "security": "none",
-        "wsSettings": { "path": "/vless-argo" }
-      },
-      "sniffing": { "enabled": true, "destOverride": ["http","tls","quic"] }
-    },
-    {
-      "port": 3003, "listen": "127.0.0.1", "protocol": "vmess",
+      "port": ${VMESS_WS_PORT}, "listen": "127.0.0.1", "protocol": "vmess",
       "settings": { "clients": [{ "id": "${UUID}", "alterId": 0 }] },
       "streamSettings": {
         "network": "ws",
@@ -604,8 +617,6 @@ VLESS_REALITY_GRPC="vless://${UUID}@${PUBLIC_IP}:${GRPC_PORT}?encryption=none&se
 
 VLESS_REALITY_XHTTP="vless://${UUID}@${PUBLIC_IP}:${XHTTP_PORT}?encryption=none&security=reality&sni=www.nazhumi.com&fp=chrome&pbk=${PUBLIC_KEY}&allowInsecure=1&type=xhttp&mode=auto#${ISP}-xHTTP"
 
-VLESS_ARGO_WS="vless://${UUID}@${CFIP}:${CFPORT}?encryption=none&security=tls&sni=${ARGO_DOMAIN}&fp=chrome&type=ws&host=${ARGO_DOMAIN}&path=%2Fvless-argo%3Fed%3D2560#${ISP}-Argo-WS"
-
 VMESS_ARGO_WS="vmess://$(echo "{\"v\":\"2\",\"ps\":\"${ISP}-Argo-VMess\",\"add\":\"${CFIP}\",\"port\":\"${CFPORT}\",\"id\":\"${UUID}\",\"aid\":\"0\",\"scy\":\"none\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${ARGO_DOMAIN}\",\"path\":\"/vmess-argo?ed=2560\",\"tls\":\"tls\",\"sni\":\"${ARGO_DOMAIN}\",\"alpn\":\"\",\"fp\":\"chrome\"}" | base64_nowrap)"
 
 # 写入文件
@@ -613,8 +624,6 @@ cat > "${URL_FILE}" << URLEOF
 ${VLESS_REALITY_GRPC}
 
 ${VLESS_REALITY_XHTTP}
-
-${VLESS_ARGO_WS}
 
 ${VMESS_ARGO_WS}
 URLEOF
@@ -635,6 +644,12 @@ WORK_DIR="$(cd "$(dirname "$0")" && pwd)"
 IS_MACOS=false
 [[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
 
+ARGO_PORT=$(jq -r '.inbounds[0].port' "$WORK_DIR/config.json" 2>/dev/null)
+if [[ -z "$ARGO_PORT" || "$ARGO_PORT" == "null" ]]; then
+    echo "无法从 $WORK_DIR/config.json 读取 Argo 端口" >&2
+    exit 1
+fi
+
 case "${1:-status}" in
     start)
         if $IS_MACOS; then
@@ -642,7 +657,7 @@ case "${1:-status}" in
                 < /dev/null > "$WORK_DIR/xray.log" 2>&1 &
             disown $! 2>/dev/null || true
             echo "Xray started (PID $!)"
-            "$WORK_DIR/argo" tunnel --url "http://localhost:8080" --no-autoupdate --edge-ip-version auto --protocol http2 \
+            "$WORK_DIR/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol http2 \
                 < /dev/null > "$WORK_DIR/argo.log" 2>&1 &
             disown $! 2>/dev/null || true
             echo "Argo started (PID $!)"
@@ -703,9 +718,6 @@ echo -e "${PURPLE}${VLESS_REALITY_GRPC}${RESET}"
 echo ""
 echo -e "${YELLOW}── Reality xHTTP ─────────────────────────────────────────────${RESET}"
 echo -e "${PURPLE}${VLESS_REALITY_XHTTP}${RESET}"
-echo ""
-echo -e "${YELLOW}── Argo VLESS-WS (CDN 优选 IP) ───────────────────────────────${RESET}"
-echo -e "${PURPLE}${VLESS_ARGO_WS}${RESET}"
 echo ""
 echo -e "${YELLOW}── Argo VMess-WS (CDN 优选 IP) ───────────────────────────────${RESET}"
 echo -e "${PURPLE}${VMESS_ARGO_WS}${RESET}"
