@@ -347,26 +347,10 @@ cat > "${CONFIG_FILE}" << EOF
         "clients": [{ "id": "${UUID}" }],
         "decryption": "none",
         "fallbacks": [
-          { "dest": 3001 },
-          { "path": "/vless-argo", "dest": 3002 },
           { "path": "/vmess-argo", "dest": 3003 }
         ]
       },
       "streamSettings": { "network": "tcp" }
-    },
-    {
-      "port": 3001, "listen": "127.0.0.1", "protocol": "vless",
-      "settings": { "clients": [{ "id": "${UUID}" }], "decryption": "none" },
-      "streamSettings": { "network": "tcp", "security": "none" }
-    },
-    {
-      "port": 3002, "listen": "127.0.0.1", "protocol": "vless",
-      "settings": { "clients": [{ "id": "${UUID}", "level": 0 }], "decryption": "none" },
-      "streamSettings": {
-        "network": "ws", "security": "none",
-        "wsSettings": { "path": "/vless-argo" }
-      },
-      "sniffing": { "enabled": true, "destOverride": ["http","tls","quic"] }
     },
     {
       "port": 3003, "listen": "127.0.0.1", "protocol": "vmess",
@@ -552,14 +536,10 @@ ISP=$(curl -sm 4 -H "User-Agent: Mozilla" "https://api.ip.sb/geoip" 2>/dev/null 
 info "ISP: ${ISP}"
 
 # 生成节点链接
-VLESS_ARGO_WS="vless://${UUID}@${CFIP}:${CFPORT}?encryption=none&security=tls&sni=${ARGO_DOMAIN}&fp=chrome&type=ws&host=${ARGO_DOMAIN}&path=%2Fvless-argo%3Fed%3D2560#${ISP}-Argo-WS"
-
 VMESS_ARGO_WS="vmess://$(echo "{\"v\":\"2\",\"ps\":\"${ISP}-Argo-VMess\",\"add\":\"${CFIP}\",\"port\":\"${CFPORT}\",\"id\":\"${UUID}\",\"aid\":\"0\",\"scy\":\"none\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${ARGO_DOMAIN}\",\"path\":\"/vmess-argo?ed=2560\",\"tls\":\"tls\",\"sni\":\"${ARGO_DOMAIN}\",\"alpn\":\"\",\"fp\":\"chrome\"}" | base64_nowrap)"
 
 # 写入文件
 cat > "${URL_FILE}" << URLEOF
-${VLESS_ARGO_WS}
-
 ${VMESS_ARGO_WS}
 URLEOF
 
@@ -642,9 +622,6 @@ echo -e "${CYAN}║${RESET}${BOLD}  节点链接                                
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${RESET}"
 echo ""
 
-echo -e "${YELLOW}── Argo VLESS-WS (CDN 优选 IP) ───────────────────────────────${RESET}"
-echo -e "${PURPLE}${VLESS_ARGO_WS}${RESET}"
-echo ""
 echo -e "${YELLOW}── Argo VMess-WS (CDN 优选 IP) ───────────────────────────────${RESET}"
 echo -e "${PURPLE}${VMESS_ARGO_WS}${RESET}"
 echo ""

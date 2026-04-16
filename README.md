@@ -1,11 +1,10 @@
-支持 **macOS** 和 **Linux**，生成 VLESS-Argo-WS、VMess-Argo-WS 两条隧道节点。
+支持 **macOS** 和 **Linux**，生成 VMess-Argo-WS 隧道节点。
 
 ---
 
 | 节点 | 协议 | 传输 | 穿透 | 说明 |
 |------|------|------|------|------|
-| Argo VLESS-WS | VLESS | WebSocket | Cloudflare CDN | 国内稳定，走优选 IP |
-| Argo VMess-WS | VMess | WebSocket | Cloudflare CDN | 兼容性最广，走优选 IP |
+| Argo VMess-WS | VMess | WebSocket | Cloudflare CDN | 兼容性最广泛，走优选 IP |
 
 ---
 
