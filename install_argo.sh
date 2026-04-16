@@ -365,54 +365,8 @@ SVCEOF
 fi
 
 step "启动 Argo 临时隧道 & 获取域名"
-MAX_ARGO_RETRIES=5
-ARGO_RETRY_COUNT=0
-ARGO_DOMAIN=""
 
-while [[ $ARGO_RETRY_COUNT -lt $MAX_ARGO_RETRIES ]]; do
-    ARGO_RETRY_COUNT=$((ARGO_RETRY_COUNT + 1))
-    [[ $ARGO_RETRY_COUNT -gt 1 ]] && warn "正在重试 [${ARGO_RETRY_COUNT}/${MAX_ARGO_RETRIES}]..."
-    
-    rm -f "${ARGO_LOG}"
-    # 启动进程
-    "${WORK_DIR}/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol auto < /dev/null > "${ARGO_LOG}" 2>&1 &
-    ARGO_PID=$!
-    disown "$ARGO_PID" 2>/dev/null || true
-    
-    # 1. 首先等待日志中出现域名
-    for i in $(seq 1 15); do
-        sleep 2
-        ARGO_DOMAIN=$(sed -n 's|.*https://\([^/]*trycloudflare\.com\).*|\1|p' "${ARGO_LOG}" 2>/dev/null | tail -1)
-        [[ -n "${ARGO_DOMAIN}" ]] && break
-        printf "\r  ${CYAN}│  等待域名展示... %ds${RESET}" $((i*2))
-    done
-    echo ""
-
-    if [[ -n "${ARGO_DOMAIN}" ]]; then
-        info "已获域名: ${ARGO_DOMAIN}，正在检测连通性 (需 5-10s)..."
-        sleep 5
-        # 2. 探测域名健康状况 (仅针对 530 隧道未就绪错误进行重试)
-        HTTP_CODE=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 10 "https://${ARGO_DOMAIN}" || echo "000")
-        if [[ "${HTTP_CODE}" == "530" ]]; then
-            warn "探测失败 (HTTP ${HTTP_CODE})，由于隧道建立缓慢或网络受阻，正在重启..."
-            kill "$ARGO_PID" 2>/dev/null || true
-            sleep 3
-            ARGO_DOMAIN=""
-        else
-            ok "连通性检测通过 (HTTP ${HTTP_CODE})"
-            break
-        fi
-    else
-        warn "未能从日志中提取到域名，正在重启..."
-        kill "$ARGO_PID" 2>/dev/null || true
-        sleep 2
-    fi
-done
-
-if [[ -z "${ARGO_DOMAIN}" ]]; then
-    fail "在 ${MAX_ARGO_RETRIES} 次尝试后仍未能建立健康的隧道，请检查网络或稍后重试"
-fi
-
+# 1. 针对 Linux Systemd 系统，预先创建服务模板
 if ! $IS_MACOS && $HAS_SYSTEMD; then
     cat > /etc/systemd/system/tunnel.service << TEOF
 [Unit]
@@ -425,16 +379,67 @@ NoNewPrivileges=yes
 TimeoutStartSec=0
 ExecStart=${WORK_DIR}/argo tunnel --url http://localhost:${ARGO_PORT} --no-autoupdate --edge-ip-version auto --protocol auto
 StandardOutput=append:${ARGO_LOG}
+StandardError=append:${ARGO_LOG}
 Restart=on-failure
 RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target
 TEOF
-    kill "$ARGO_PID" 2>/dev/null || true
     systemctl daemon-reload
-    systemctl enable tunnel --now
-    info "Argo 已通过 systemd 托管: systemctl status tunnel"
+    systemctl enable tunnel >/dev/null 2>&1 || true
+fi
+
+MAX_ARGO_RETRIES=5
+ARGO_RETRY_COUNT=0
+ARGO_DOMAIN=""
+
+while [[ $ARGO_RETRY_COUNT -lt $MAX_ARGO_RETRIES ]]; do
+    ARGO_RETRY_COUNT=$((ARGO_RETRY_COUNT + 1))
+    [[ $ARGO_RETRY_COUNT -gt 1 ]] && warn "正在重试 [${ARGO_RETRY_COUNT}/${MAX_ARGO_RETRIES}]..."
+    
+    rm -f "${ARGO_LOG}"
+    
+    # 2. 启动/重启进程
+    if ! $IS_MACOS && $HAS_SYSTEMD; then
+        systemctl restart tunnel
+    else
+        "${WORK_DIR}/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol auto < /dev/null > "${ARGO_LOG}" 2>&1 &
+        ARGO_PID=$!
+        disown "$ARGO_PID" 2>/dev/null || true
+    fi
+    
+    # 3. 等待日志中出现域名
+    for i in $(seq 1 15); do
+        sleep 2
+        ARGO_DOMAIN=$(sed -n 's|.*https://\([^/]*trycloudflare\.com\).*|\1|p' "${ARGO_LOG}" 2>/dev/null | tail -1)
+        [[ -n "${ARGO_DOMAIN}" ]] && break
+        printf "\r  ${CYAN}│  等待域名展示... %ds${RESET}" $((i*2))
+    done
+    echo ""
+
+    if [[ -n "${ARGO_DOMAIN}" ]]; then
+        info "已获域名: ${ARGO_DOMAIN}，正在实时检测 (需 5-10s)..."
+        sleep 8
+        HTTP_CODE=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 10 "https://${ARGO_DOMAIN}" || echo "000")
+        if [[ "${HTTP_CODE}" == "530" ]]; then
+            warn "检测到 HTTP 530 (隧道未就绪)，正在拉起重试..."
+            if ! $IS_MACOS && $HAS_SYSTEMD; then systemctl stop tunnel; else kill "$ARGO_PID" 2>/dev/null || true; fi
+            sleep 3
+            ARGO_DOMAIN=""
+        else
+            ok "连通性检测通过 (HTTP ${HTTP_CODE})"
+            break
+        fi
+    else
+        warn "未能从日志获取域名，正在重新启动..."
+        if ! $IS_MACOS && $HAS_SYSTEMD; then systemctl stop tunnel; else kill "$ARGO_PID" 2>/dev/null || true; fi
+        sleep 2
+    fi
+done
+
+if [[ -z "${ARGO_DOMAIN}" ]]; then
+    fail "在 ${MAX_ARGO_RETRIES} 次尝试后仍未能建立健康的隧道，请检查网络或稍后重试"
 fi
 
 step "生成节点订阅信息"
