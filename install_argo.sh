@@ -62,6 +62,8 @@ SUB_FILE="${WORK_DIR}/sub.txt"
 ARGO_LOG="${WORK_DIR}/argo.log"
 XRAY_LOG="${WORK_DIR}/xray.log"
 
+ARGO_PORT=8080   # xray 对外监听（Argo 入口）
+
 # ─── 打印 Banner ─────────────────────────────────────────────────────────────
 clear
 echo -e "${PURPLE}"
@@ -114,55 +116,6 @@ random_port() {
         jot -r 1 10000 60000
     else
         awk 'BEGIN { srand(); print int(10000 + rand() * 50000) }'
-    fi
-}
-
-# 生成随机高位且尽量不冲突的端口
-pick_unique_port() {
-    local used_ports="$1"
-    local port
-    while true; do
-        port=$(random_port)
-        [[ ",${used_ports}," == *",${port},"* ]] && continue
-        if command -v ss &>/dev/null; then
-            ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|[\[\]:])${port}$" && continue
-        elif command -v netstat &>/dev/null; then
-            netstat -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|[\[\]:])${port}$" && continue
-        fi
-        printf '%s' "$port"
-        return 0
-    done
-}
-
-# JSON 校验与读取（优先 jq，macOS 回退 plutil，再回退 python3）
-validate_json_file() {
-    local json_file="$1"
-    if command -v jq &>/dev/null; then
-        jq empty "$json_file" >/dev/null 2>&1
-    elif $IS_MACOS && command -v plutil &>/dev/null; then
-        plutil -lint "$json_file" >/dev/null 2>&1
-    elif command -v python3 &>/dev/null; then
-        python3 -m json.tool "$json_file" >/dev/null 2>&1
-    else
-        return 1
-    fi
-}
-
-extract_first_inbound_port() {
-    local json_file="$1"
-    if command -v jq &>/dev/null; then
-        jq -r '.inbounds[0].port' "$json_file" 2>/dev/null
-    elif $IS_MACOS && command -v plutil &>/dev/null; then
-        plutil -extract inbounds.0.port raw -o - "$json_file" 2>/dev/null
-    elif command -v python3 &>/dev/null; then
-        python3 - "$json_file" <<'PY'
-import json, sys
-with open(sys.argv[1], 'r', encoding='utf-8') as f:
-    data = json.load(f)
-print(data['inbounds'][0]['port'])
-PY
-    else
-        return 1
     fi
 }
 
@@ -262,26 +215,22 @@ ok "架构检测完成"
 step "检查并安装依赖"
 
 if $IS_MACOS; then
-    for cmd in curl unzip; do
+    # macOS 内置 curl、unzip，检查即可
+    for cmd in curl unzip jq; do
         if command -v "$cmd" &>/dev/null; then
             info "${cmd} ✓ ($(command -v "$cmd"))"
         else
-            fail "依赖 ${cmd} 未找到，请手动安装"
+            if [[ "$cmd" == "jq" ]]; then
+                warn "jq 未安装，请先运行: brew install jq"
+                warn "继续安装，但 change_config 功能可能受限"
+            else
+                fail "依赖 ${cmd} 未找到，请手动安装"
+            fi
         fi
     done
-
-    if command -v jq &>/dev/null; then
-        info "jq ✓ ($(command -v jq))"
-    elif command -v plutil &>/dev/null; then
-        info "jq 未安装，改用 plutil 做 JSON 校验"
-    elif command -v python3 &>/dev/null; then
-        info "jq 未安装，改用 python3 做 JSON 校验"
-    else
-        warn "未找到 jq/plutil/python3，JSON 校验与端口读取回退不可用"
-    fi
 else
     PKGS_NEEDED=()
-    for pkg in curl unzip; do
+    for pkg in curl unzip jq; do
         command -v "$pkg" &>/dev/null || PKGS_NEEDED+=("$pkg")
     done
 
@@ -299,14 +248,6 @@ else
         else
             fail "无法识别的包管理器，请手动安装: ${PKGS_NEEDED[*]}"
         fi
-    fi
-
-    if command -v jq &>/dev/null; then
-        info "jq ✓ ($(command -v jq))"
-    elif command -v python3 &>/dev/null; then
-        info "jq 未安装，改用 python3 做 JSON 校验"
-    else
-        warn "未找到 jq/python3，JSON 校验与端口读取回退不可用"
     fi
 fi
 
@@ -389,22 +330,14 @@ ok "二进制文件就绪"
 step "生成密钥和节点配置"
 
 UUID="${UUID:-$(gen_uuid)}"
-GRPC_PORT="${PORT:-$(pick_unique_port "")}"
-USED_PORTS="${GRPC_PORT}"
-XHTTP_PORT=$(pick_unique_port "${USED_PORTS}")
-USED_PORTS="${USED_PORTS},${XHTTP_PORT}"
-ARGO_PORT=$(pick_unique_port "${USED_PORTS}")
-USED_PORTS="${USED_PORTS},${ARGO_PORT}"
-ARGO_FALLBACK_PORT=$(pick_unique_port "${USED_PORTS}")
-USED_PORTS="${USED_PORTS},${ARGO_FALLBACK_PORT}"
-VMESS_WS_PORT=$(pick_unique_port "${USED_PORTS}")
+BASE_PORT="${PORT:-$(random_port)}"
+GRPC_PORT=$((BASE_PORT))
+XHTTP_PORT=$((BASE_PORT + 1))
 
 info "UUID      : ${UUID}"
 info "gRPC port : ${GRPC_PORT}"
 info "xHTTP port: ${XHTTP_PORT}"
 info "Argo port : ${ARGO_PORT}"
-info "VMess WS  : ${VMESS_WS_PORT}"
-info "Fallback  : ${ARGO_FALLBACK_PORT}"
 
 # 生成 x25519 密钥对
 info "生成 Reality x25519 密钥对..."
@@ -430,19 +363,29 @@ cat > "${CONFIG_FILE}" << EOF
         "clients": [{ "id": "${UUID}", "flow": "xtls-rprx-vision" }],
         "decryption": "none",
         "fallbacks": [
-          { "dest": ${ARGO_FALLBACK_PORT} },
-          { "path": "/vmess-argo", "dest": ${VMESS_WS_PORT} }
+          { "dest": 3001 },
+          { "path": "/vless-argo", "dest": 3002 },
+          { "path": "/vmess-argo", "dest": 3003 }
         ]
       },
       "streamSettings": { "network": "tcp" }
     },
     {
-      "port": ${ARGO_FALLBACK_PORT}, "listen": "127.0.0.1", "protocol": "vless",
+      "port": 3001, "listen": "127.0.0.1", "protocol": "vless",
       "settings": { "clients": [{ "id": "${UUID}" }], "decryption": "none" },
       "streamSettings": { "network": "tcp", "security": "none" }
     },
     {
-      "port": ${VMESS_WS_PORT}, "listen": "127.0.0.1", "protocol": "vmess",
+      "port": 3002, "listen": "127.0.0.1", "protocol": "vless",
+      "settings": { "clients": [{ "id": "${UUID}", "level": 0 }], "decryption": "none" },
+      "streamSettings": {
+        "network": "ws", "security": "none",
+        "wsSettings": { "path": "/vless-argo" }
+      },
+      "sniffing": { "enabled": true, "destOverride": ["http","tls","quic"] }
+    },
+    {
+      "port": 3003, "listen": "127.0.0.1", "protocol": "vmess",
       "settings": { "clients": [{ "id": "${UUID}", "alterId": 0 }] },
       "streamSettings": {
         "network": "ws",
@@ -490,11 +433,6 @@ cat > "${CONFIG_FILE}" << EOF
   ]
 }
 EOF
-
-if ! validate_json_file "${CONFIG_FILE}"; then
-    r "生成的配置文件不是合法 JSON: ${CONFIG_FILE}"
-    fail "请检查配置模板中的 JSON 语法"
-fi
 
 ok "配置文件生成完成: ${CONFIG_FILE}"
 
@@ -666,6 +604,8 @@ VLESS_REALITY_GRPC="vless://${UUID}@${PUBLIC_IP}:${GRPC_PORT}?encryption=none&se
 
 VLESS_REALITY_XHTTP="vless://${UUID}@${PUBLIC_IP}:${XHTTP_PORT}?encryption=none&security=reality&sni=www.nazhumi.com&fp=chrome&pbk=${PUBLIC_KEY}&allowInsecure=1&type=xhttp&mode=auto#${ISP}-xHTTP"
 
+VLESS_ARGO_WS="vless://${UUID}@${CFIP}:${CFPORT}?encryption=none&security=tls&sni=${ARGO_DOMAIN}&fp=chrome&type=ws&host=${ARGO_DOMAIN}&path=%2Fvless-argo%3Fed%3D2560#${ISP}-Argo-WS"
+
 VMESS_ARGO_WS="vmess://$(echo "{\"v\":\"2\",\"ps\":\"${ISP}-Argo-VMess\",\"add\":\"${CFIP}\",\"port\":\"${CFPORT}\",\"id\":\"${UUID}\",\"aid\":\"0\",\"scy\":\"none\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${ARGO_DOMAIN}\",\"path\":\"/vmess-argo?ed=2560\",\"tls\":\"tls\",\"sni\":\"${ARGO_DOMAIN}\",\"alpn\":\"\",\"fp\":\"chrome\"}" | base64_nowrap)"
 
 # 写入文件
@@ -673,6 +613,8 @@ cat > "${URL_FILE}" << URLEOF
 ${VLESS_REALITY_GRPC}
 
 ${VLESS_REALITY_XHTTP}
+
+${VLESS_ARGO_WS}
 
 ${VMESS_ARGO_WS}
 URLEOF
@@ -689,94 +631,18 @@ cat > "${WORK_DIR}/manage.sh" << 'MANAGE'
 #!/usr/bin/env bash
 # Xray-2go 简易管理
 
-SCRIPT_PATH="$0"
-while [[ -L "$SCRIPT_PATH" ]]; do
-    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
-    LINK_TARGET="$(readlink "$SCRIPT_PATH")"
-    if [[ "$LINK_TARGET" == /* ]]; then
-        SCRIPT_PATH="$LINK_TARGET"
-    else
-        SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
-    fi
-done
-
-WORK_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+WORK_DIR="$(cd "$(dirname "$0")" && pwd)"
 IS_MACOS=false
 [[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
-COMMAND="${1:-status}"
-FORCE=false
-if [[ "${1:-}" == "--force" ]]; then
-    FORCE=true
-    COMMAND="${2:-status}"
-elif [[ "${2:-}" == "--force" ]]; then
-    FORCE=true
-fi
 
-extract_first_inbound_port() {
-    local json_file="$1"
-    if command -v jq &>/dev/null; then
-        jq -r '.inbounds[0].port' "$json_file" 2>/dev/null
-    elif $IS_MACOS && command -v plutil &>/dev/null; then
-        plutil -extract inbounds.0.port raw -o - "$json_file" 2>/dev/null
-    elif command -v python3 &>/dev/null; then
-        python3 - "$json_file" <<'PY'
-import json, sys
-with open(sys.argv[1], 'r', encoding='utf-8') as f:
-    data = json.load(f)
-print(data['inbounds'][0]['port'])
-PY
-    else
-        return 1
-    fi
-}
-
-require_argo_port() {
-    ARGO_PORT=$(extract_first_inbound_port "$WORK_DIR/config.json")
-    if [[ -z "$ARGO_PORT" || "$ARGO_PORT" == "null" ]]; then
-        echo "无法从 $WORK_DIR/config.json 读取 Argo 端口" >&2
-        exit 1
-    fi
-}
-
-confirm_uninstall() {
-    if $FORCE; then
-        return 0
-    fi
-    printf '确认删除 Xray-2go 安装目录及相关服务？[y/N] '
-    read -r answer
-    [[ "$answer" == "y" || "$answer" == "Y" ]]
-}
-
-uninstall_all() {
-    if ! confirm_uninstall; then
-        echo "已取消卸载"
-        exit 0
-    fi
-
-    if $IS_MACOS; then
-        pkill -f "$WORK_DIR/xray run" 2>/dev/null || true
-        pkill -f "$WORK_DIR/argo tunnel" 2>/dev/null || true
-    else
-        systemctl stop xray tunnel 2>/dev/null || true
-        systemctl disable xray tunnel 2>/dev/null || true
-        rm -f /etc/systemd/system/xray.service /etc/systemd/system/tunnel.service
-        systemctl daemon-reload 2>/dev/null || true
-    fi
-
-    rm -f /usr/local/bin/2go /usr/bin/2go
-    rm -rf "$WORK_DIR"
-    echo "Xray-2go 已卸载"
-}
-
-case "$COMMAND" in
+case "${1:-status}" in
     start)
-        require_argo_port
         if $IS_MACOS; then
             "$WORK_DIR/xray" run -c "$WORK_DIR/config.json" \
                 < /dev/null > "$WORK_DIR/xray.log" 2>&1 &
             disown $! 2>/dev/null || true
             echo "Xray started (PID $!)"
-            "$WORK_DIR/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol http2 \
+            "$WORK_DIR/argo" tunnel --url "http://localhost:8080" --no-autoupdate --edge-ip-version auto --protocol http2 \
                 < /dev/null > "$WORK_DIR/argo.log" 2>&1 &
             disown $! 2>/dev/null || true
             echo "Argo started (PID $!)"
@@ -806,17 +672,15 @@ case "$COMMAND" in
         if $IS_MACOS; then tail -50 "$WORK_DIR/xray.log"; else journalctl -u xray -n 50; fi ;;
     log-argo)
         tail -50 "$WORK_DIR/argo.log" ;;
-    uninstall)
-        uninstall_all ;;
     *)
-        echo "用法: $0 {start|stop|restart|status|nodes|log-xray|log-argo|uninstall [--force]}" ;;
+        echo "用法: $0 {start|stop|restart|status|nodes|log-xray|log-argo}" ;;
 esac
 MANAGE
 chmod +x "${WORK_DIR}/manage.sh"
 
 # 创建全局快捷命令
 ln -sf "${WORK_DIR}/manage.sh" "${BIN_PATH}" 2>/dev/null || true
-[[ -L "${BIN_PATH}" ]] && ok "快捷命令已创建: 2go {start|stop|restart|status|nodes|log-xray|log-argo|uninstall}"
+[[ -L "${BIN_PATH}" ]] && ok "快捷命令已创建: 2go {start|stop|restart|status|nodes|log-xray|log-argo}"
 
 # ─── 输出最终摘要 ─────────────────────────────────────────────────────────────
 echo ""
@@ -840,6 +704,9 @@ echo ""
 echo -e "${YELLOW}── Reality xHTTP ─────────────────────────────────────────────${RESET}"
 echo -e "${PURPLE}${VLESS_REALITY_XHTTP}${RESET}"
 echo ""
+echo -e "${YELLOW}── Argo VLESS-WS (CDN 优选 IP) ───────────────────────────────${RESET}"
+echo -e "${PURPLE}${VLESS_ARGO_WS}${RESET}"
+echo ""
 echo -e "${YELLOW}── Argo VMess-WS (CDN 优选 IP) ───────────────────────────────${RESET}"
 echo -e "${PURPLE}${VMESS_ARGO_WS}${RESET}"
 echo ""
@@ -849,7 +716,6 @@ echo -e "  ${GREEN}2go status${RESET}    查看运行状态"
 echo -e "  ${GREEN}2go nodes${RESET}     查看节点链接"
 echo -e "  ${GREEN}2go restart${RESET}   重启服务"
 echo -e "  ${GREEN}2go log-argo${RESET}  查看 Argo 日志（含域名）"
-echo -e "  ${GREEN}2go uninstall${RESET} 卸载服务与安装目录"
 echo ""
 
 if $IS_MACOS; then
