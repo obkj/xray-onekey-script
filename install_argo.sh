@@ -689,7 +689,18 @@ cat > "${WORK_DIR}/manage.sh" << 'MANAGE'
 #!/usr/bin/env bash
 # Xray-2go 简易管理
 
-WORK_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_PATH="$0"
+while [[ -L "$SCRIPT_PATH" ]]; do
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    LINK_TARGET="$(readlink "$SCRIPT_PATH")"
+    if [[ "$LINK_TARGET" == /* ]]; then
+        SCRIPT_PATH="$LINK_TARGET"
+    else
+        SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
+    fi
+done
+
+WORK_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 IS_MACOS=false
 [[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
 
