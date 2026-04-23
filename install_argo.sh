@@ -37,30 +37,26 @@ HAS_SYSTEMD=false
 [[ "${OS_NAME}" == "Darwin" ]] && IS_MACOS=true
 command -v systemctl >/dev/null 2>&1 && HAS_SYSTEMD=true
 
-# root 检查与自动授权
-if [[ $EUID -ne 0 ]]; then
-    if command -v sudo >/dev/null 2>&1; then
-        warn "检测到非 root 用户，正在尝试通过 sudo 获取权限..."
-        if [[ -f "$0" ]]; then
-            exec sudo bash "$0" "$@"
-        else
-            # 处理通过管道或 curl 运行的情况：下载到临时文件后提权运行
-            TMP_SCRIPT=$(mktemp)
-            curl -H "Cache-Control: no-cache" -Ls "https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s)" -o "$TMP_SCRIPT"
-            chmod +x "$TMP_SCRIPT"
-            exec sudo "$TMP_SCRIPT" "$@"
-        fi
-    else
-        fail "本脚本需要 root 权限，且未找到 sudo，请手动切换到 root 用户运行。"
-    fi
-fi
+# root 检查与权限变量
+IS_ROOT=false
+[[ $EUID -eq 0 ]] && IS_ROOT=true
 
 if $IS_MACOS; then
-    WORK_DIR="/usr/local/etc/xray-argo"
-    BIN_PATH="/usr/local/bin/2go"
+    if $IS_ROOT; then
+        WORK_DIR="/usr/local/etc/xray-argo"
+        BIN_PATH="/usr/local/bin/2go"
+    else
+        WORK_DIR="$HOME/Library/Application Support/xray-argo"
+        BIN_PATH="$HOME/.local/bin/2go"
+    fi
 else
-    WORK_DIR="/etc/xray-argo"
-    BIN_PATH="/usr/bin/2go"
+    if $IS_ROOT; then
+        WORK_DIR="/etc/xray-argo"
+        BIN_PATH="/usr/bin/2go"
+    else
+        WORK_DIR="$HOME/.local/share/xray-argo"
+        BIN_PATH="$HOME/.local/bin/2go"
+    fi
 fi
 
 CONFIG_FILE="${WORK_DIR}/config.json"
@@ -214,18 +210,30 @@ else
         command -v "$pkg" &>/dev/null || PKGS_NEEDED+=("$pkg")
     done
     if [[ ${#PKGS_NEEDED[@]} -gt 0 ]]; then
-        info "需要安装: ${PKGS_NEEDED[*]}"
-        if command -v apt &>/dev/null; then
-            DEBIAN_FRONTEND=noninteractive apt-get update -qq
-            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${PKGS_NEEDED[@]}"
-        elif command -v dnf &>/dev/null; then
-            dnf install -y -q "${PKGS_NEEDED[@]}"
-        elif command -v yum &>/dev/null; then
-            yum install -y -q "${PKGS_NEEDED[@]}"
-        elif command -v apk &>/dev/null; then
-            apk add --quiet "${PKGS_NEEDED[@]}"
+        if $IS_ROOT; then
+            info "需要安装: ${PKGS_NEEDED[*]}"
+            if command -v apt &>/dev/null; then
+                DEBIAN_FRONTEND=noninteractive apt-get update -qq
+                DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${PKGS_NEEDED[@]}"
+            elif command -v dnf &>/dev/null; then
+                dnf install -y -q "${PKGS_NEEDED[@]}"
+            elif command -v yum &>/dev/null; then
+                yum install -y -q "${PKGS_NEEDED[@]}"
+            elif command -v apk &>/dev/null; then
+                apk add --quiet "${PKGS_NEEDED[@]}"
+            else
+                fail "无法识别的包管理器，请手动安装: ${PKGS_NEEDED[*]}"
+            fi
         else
-            fail "无法识别的包管理器，请手动安装: ${PKGS_NEEDED[*]}"
+            warn "缺少依赖: ${PKGS_NEEDED[*]}"
+            if [[ " ${PKGS_NEEDED[*]} " == *" jq "* ]]; then
+                warn "继续安装，但 change_config 功能可能受限"
+                PKGS_CRITICAL=()
+                for p in "${PKGS_NEEDED[@]}"; do [[ "$p" != "jq" ]] && PKGS_CRITICAL+=("$p"); done
+                [[ ${#PKGS_CRITICAL[@]} -gt 0 ]] && fail "请手动安装缺失的关键依赖: ${PKGS_CRITICAL[*]}"
+            else
+                fail "请手动安装缺失的依赖: ${PKGS_NEEDED[*]}"
+            fi
         fi
     fi
 fi
@@ -237,11 +245,17 @@ if $IS_MACOS || ! $HAS_SYSTEMD; then
     pkill -f "${WORK_DIR}/argo tunnel" &>/dev/null || true
     info "已停止旧 xray / argo 进程"
 else
-    systemctl stop xray 2>/dev/null || true
-    systemctl stop tunnel 2>/dev/null || true
+    if $IS_ROOT; then
+        systemctl stop xray 2>/dev/null || true
+        systemctl stop tunnel 2>/dev/null || true
+    else
+        systemctl --user stop xray 2>/dev/null || true
+        systemctl --user stop tunnel 2>/dev/null || true
+    fi
     info "已停止旧 systemd 服务"
 fi
 mkdir -p "${WORK_DIR}"
+mkdir -p "$(dirname "${BIN_PATH}")"
 chmod 755 "${WORK_DIR}"
 info "安装目录 : ${WORK_DIR}"
 ok "目录准备完成"
@@ -337,7 +351,16 @@ if $IS_MACOS || ! $HAS_SYSTEMD; then
         fail "Xray 进程已退出，请检查配置"
     fi
 else
-    cat > /etc/systemd/system/xray.service << SVCEOF
+    if $IS_ROOT; then
+        SERVICE_FILE="/etc/systemd/system/xray.service"
+        SYSTEMCTL_CMD="systemctl"
+    else
+        SERVICE_FILE="$HOME/.config/systemd/user/xray.service"
+        SYSTEMCTL_CMD="systemctl --user"
+        mkdir -p "$(dirname "$SERVICE_FILE")"
+    fi
+
+    cat > "$SERVICE_FILE" << SVCEOF
 [Unit]
 Description=Xray Service
 Documentation=https://github.com/XTLS/Xray-core
@@ -351,28 +374,39 @@ Restart=on-failure
 RestartSec=5s
 
 [Install]
-WantedBy=multi-user.target
+$( $IS_ROOT && echo "WantedBy=multi-user.target" || echo "WantedBy=default.target" )
 SVCEOF
-    systemctl daemon-reload
-    systemctl enable xray --now
+    $SYSTEMCTL_CMD daemon-reload
+    $SYSTEMCTL_CMD enable xray --now
     sleep 2
-    if systemctl is-active --quiet xray; then
+    if $SYSTEMCTL_CMD is-active --quiet xray; then
         ok "Xray systemd 服务已启动"
     else
         r "Xray 服务启动失败:"
-        systemctl status xray --no-pager | tail -20 || true
+        $SYSTEMCTL_CMD status xray --no-pager | tail -20 || true
         fail "请检查配置文件: ${CONFIG_FILE}"
     fi
-    iptables -F >/dev/null 2>&1 && iptables -P INPUT ACCEPT >/dev/null 2>&1 && iptables -P FORWARD ACCEPT >/dev/null 2>&1 && iptables -P OUTPUT ACCEPT >/dev/null 2>&1 || true
-    command -v ip6tables &>/dev/null && ip6tables -F >/dev/null 2>&1 && ip6tables -P INPUT ACCEPT >/dev/null 2>&1 || true
-    info "已配置 iptables 放行规则"
+    if $IS_ROOT; then
+        iptables -F >/dev/null 2>&1 && iptables -P INPUT ACCEPT >/dev/null 2>&1 && iptables -P FORWARD ACCEPT >/dev/null 2>&1 && iptables -P OUTPUT ACCEPT >/dev/null 2>&1 || true
+        command -v ip6tables &>/dev/null && ip6tables -F >/dev/null 2>&1 && ip6tables -P INPUT ACCEPT >/dev/null 2>&1 || true
+        info "已配置 iptables 放行规则"
+    fi
 fi
 
 step "启动 Argo 临时隧道 & 获取域名"
 
 # 1. 针对 Linux Systemd 系统，预先创建服务模板
 if ! $IS_MACOS && $HAS_SYSTEMD; then
-    cat > /etc/systemd/system/tunnel.service << TEOF
+    if $IS_ROOT; then
+        TUNNEL_SERVICE_FILE="/etc/systemd/system/tunnel.service"
+        SYSTEMCTL_CMD="systemctl"
+    else
+        TUNNEL_SERVICE_FILE="$HOME/.config/systemd/user/tunnel.service"
+        SYSTEMCTL_CMD="systemctl --user"
+        mkdir -p "$(dirname "$TUNNEL_SERVICE_FILE")"
+    fi
+
+    cat > "$TUNNEL_SERVICE_FILE" << TEOF
 [Unit]
 Description=Cloudflare Tunnel
 After=network.target
@@ -388,10 +422,10 @@ Restart=on-failure
 RestartSec=5s
 
 [Install]
-WantedBy=multi-user.target
+$( $IS_ROOT && echo "WantedBy=multi-user.target" || echo "WantedBy=default.target" )
 TEOF
-    systemctl daemon-reload
-    systemctl enable tunnel >/dev/null 2>&1 || true
+    $SYSTEMCTL_CMD daemon-reload
+    $SYSTEMCTL_CMD enable tunnel >/dev/null 2>&1 || true
 fi
 
 MAX_ARGO_RETRIES=5
@@ -406,7 +440,7 @@ while [[ $ARGO_RETRY_COUNT -lt $MAX_ARGO_RETRIES ]]; do
     
     # 2. 启动/重启进程
     if ! $IS_MACOS && $HAS_SYSTEMD; then
-        systemctl restart tunnel
+        $SYSTEMCTL_CMD restart tunnel
     else
         "${WORK_DIR}/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol auto < /dev/null > "${ARGO_LOG}" 2>&1 &
         ARGO_PID=$!
@@ -428,7 +462,7 @@ while [[ $ARGO_RETRY_COUNT -lt $MAX_ARGO_RETRIES ]]; do
         HTTP_CODE=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 10 "https://${ARGO_DOMAIN}" || echo "000")
         if [[ "${HTTP_CODE}" == "530" ]]; then
             warn "检测到 HTTP 530 (隧道未就绪)，正在拉起重试..."
-            if ! $IS_MACOS && $HAS_SYSTEMD; then systemctl stop tunnel; else kill "$ARGO_PID" 2>/dev/null || true; fi
+            if ! $IS_MACOS && $HAS_SYSTEMD; then $SYSTEMCTL_CMD stop tunnel; else kill "$ARGO_PID" 2>/dev/null || true; fi
             sleep 3
             ARGO_DOMAIN=""
         else
@@ -437,7 +471,7 @@ while [[ $ARGO_RETRY_COUNT -lt $MAX_ARGO_RETRIES ]]; do
         fi
     else
         warn "未能从日志获取域名，正在重新启动..."
-        if ! $IS_MACOS && $HAS_SYSTEMD; then systemctl stop tunnel; else kill "$ARGO_PID" 2>/dev/null || true; fi
+        if ! $IS_MACOS && $HAS_SYSTEMD; then $SYSTEMCTL_CMD stop tunnel; else kill "$ARGO_PID" 2>/dev/null || true; fi
         sleep 2
     fi
 done
@@ -493,39 +527,58 @@ cat > "${WORK_DIR}/manage.sh" << MANAGE
 WORK_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
 IS_MACOS=false
 HAS_SYSTEMD=false
+IS_ROOT=false
 [[ "\$(uname -s)" == "Darwin" ]] && IS_MACOS=true
 command -v systemctl >/dev/null 2>&1 && HAS_SYSTEMD=true
+[[ \$EUID -eq 0 ]] && IS_ROOT=true
+
+SYSTEMCTL_CMD="systemctl"
+if ! \$IS_ROOT && \$HAS_SYSTEMD; then
+    SYSTEMCTL_CMD="systemctl --user"
+fi
+
 case "\${1:-status}" in
     start)
-        if \$IS_MACOS || ! \$HAS_SYSTEMD; then
+        if \$IS_MACOS && ! \$IS_ROOT; then
+            launchctl load -w "\$HOME/Library/LaunchAgents/com.xray.argo.plist" 2>/dev/null || true
+            launchctl load -w "\$HOME/Library/LaunchAgents/com.argo.tunnel.plist" 2>/dev/null || true
+            echo "macOS services started via launchctl"
+        elif \$IS_MACOS || ! \$HAS_SYSTEMD; then
             "\$WORK_DIR/xray" run -c "\$WORK_DIR/config.json" < /dev/null > "\$WORK_DIR/xray.log" 2>&1 &
             disown \$! 2>/dev/null || true
             "\$WORK_DIR/argo" tunnel --url "http://localhost:${ARGO_PORT}" --no-autoupdate --edge-ip-version auto --protocol auto < /dev/null > "\$WORK_DIR/argo.log" 2>&1 &
             disown \$! 2>/dev/null || true
         else
-            systemctl start xray tunnel
+            \$SYSTEMCTL_CMD start xray tunnel
         fi ;;
     stop)
-        if \$IS_MACOS || ! \$HAS_SYSTEMD; then
+        if \$IS_MACOS && ! \$IS_ROOT; then
+            launchctl unload -w "\$HOME/Library/LaunchAgents/com.xray.argo.plist" 2>/dev/null || true
+            launchctl unload -w "\$HOME/Library/LaunchAgents/com.argo.tunnel.plist" 2>/dev/null || true
+            echo "macOS services stopped via launchctl"
+        elif \$IS_MACOS || ! \$HAS_SYSTEMD; then
             pkill -f "\$WORK_DIR/xray run" && echo "Xray stopped" || echo "Xray not running"
             pkill -f "\$WORK_DIR/argo tunnel" && echo "Argo stopped" || echo "Argo not running"
         else
-            systemctl stop xray tunnel
+            \$SYSTEMCTL_CMD stop xray tunnel
         fi ;;
     restart)
         "\$0" stop; sleep 1; "\$0" start ;;
     status)
-        if \$IS_MACOS || ! \$HAS_SYSTEMD; then
+        if \$IS_MACOS && ! \$IS_ROOT; then
+            launchctl list com.xray.argo >/dev/null 2>&1 && echo "Xray: running (launchd)" || echo "Xray: stopped"
+            launchctl list com.argo.tunnel >/dev/null 2>&1 && echo "Argo: running (launchd)" || echo "Argo: stopped"
+        elif \$IS_MACOS || ! \$HAS_SYSTEMD; then
             pgrep -f "\$WORK_DIR/xray run" > /dev/null && echo "Xray: running" || echo "Xray: stopped"
             pgrep -f "\$WORK_DIR/argo tunnel" > /dev/null && echo "Argo: running" || echo "Argo: stopped"
         else
-            systemctl status xray --no-pager -l
-            systemctl status tunnel --no-pager -l
+            \$SYSTEMCTL_CMD status xray --no-pager -l
+            \$SYSTEMCTL_CMD status tunnel --no-pager -l
         fi ;;
     nodes)
         cat "\$WORK_DIR/url.txt" ;;
     log-xray)
-        if \$IS_MACOS || ! \$HAS_SYSTEMD; then tail -50 "\$WORK_DIR/xray.log"; else journalctl -u xray -n 50; fi ;;
+        if \$IS_MACOS || ! \$HAS_SYSTEMD; then tail -50 "\$WORK_DIR/xray.log"; else journalctl \$(! \$IS_ROOT && echo "--user") -u xray -n 50; fi ;;
     log-argo)
         tail -50 "\$WORK_DIR/argo.log" ;;
     uninstall)
@@ -534,11 +587,16 @@ case "\${1:-status}" in
         [[ "\$confirm" != "y" ]] && echo "已取消" && exit 0
         "\$0" stop
         if ! \$IS_MACOS && \$HAS_SYSTEMD; then
-            systemctl disable xray tunnel >/dev/null 2>&1 || true
-            rm -f /etc/systemd/system/xray.service /etc/systemd/system/tunnel.service
-            systemctl daemon-reload
+            \$SYSTEMCTL_CMD disable xray tunnel >/dev/null 2>&1 || true
+            if \$IS_ROOT; then
+                rm -f /etc/systemd/system/xray.service /etc/systemd/system/tunnel.service
+            else
+                rm -f "\$HOME/.config/systemd/user/xray.service" "\$HOME/.config/systemd/user/tunnel.service"
+            fi
+            \$SYSTEMCTL_CMD daemon-reload
+        elif \$IS_MACOS && ! \$IS_ROOT; then
+            rm -f "\$HOME/Library/LaunchAgents/com.xray.argo.plist" "\$HOME/Library/LaunchAgents/com.argo.tunnel.plist"
         fi
-        rm -f "/usr/local/bin/2go"
         echo "正在删除安装目录: \$WORK_DIR"
         rm -rf "\$WORK_DIR"
         echo "卸载成功！" ;;
@@ -578,9 +636,87 @@ echo -e "  ${GREEN}2go uninstall${RESET} 一键卸载"
 echo ""
 
 if $IS_MACOS; then
-    echo -e "${YELLOW}⚠  macOS 提示: 重启后服务不会自动启动，需手动执行 2go start${RESET}"
-    echo -e "${YELLOW}   如需开机自启，可将以下内容加入 /etc/rc.local 或配置 launchd${RESET}"
-    echo ""
+    if ! $IS_ROOT; then
+        info "正在配置 macOS launchd 用户服务..."
+        PLIST_DIR="$HOME/Library/LaunchAgents"
+        mkdir -p "$PLIST_DIR"
+        
+        # Xray plist
+        cat > "${PLIST_DIR}/com.xray.argo.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.xray.argo</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${WORK_DIR}/xray</string>
+        <string>run</string>
+        <string>-c</string>
+        <string>${CONFIG_FILE}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${XRAY_LOG}</string>
+    <key>StandardErrorPath</key>
+    <string>${XRAY_LOG}</string>
+    <key>WorkingDirectory</key>
+    <string>${WORK_DIR}</string>
+</dict>
+</plist>
+EOF
+
+        # Argo plist
+        cat > "${PLIST_DIR}/com.argo.tunnel.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.argo.tunnel</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${WORK_DIR}/argo</string>
+        <string>tunnel</string>
+        <string>--url</string>
+        <string>http://localhost:${ARGO_PORT}</string>
+        <string>--no-autoupdate</string>
+        <string>--edge-ip-version</string>
+        <string>auto</string>
+        <string>--protocol</string>
+        <string>auto</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${ARGO_LOG}</string>
+    <key>StandardErrorPath</key>
+    <string>${ARGO_LOG}</string>
+    <key>WorkingDirectory</key>
+    <string>${WORK_DIR}</string>
+</dict>
+</plist>
+EOF
+        launchctl load -w "${PLIST_DIR}/com.xray.argo.plist" 2>/dev/null || true
+        launchctl load -w "${PLIST_DIR}/com.argo.tunnel.plist" 2>/dev/null || true
+        ok "macOS 用户服务已配置并设为开机自启"
+    else
+        warn "macOS 提示: 当前以 root 运行，未配置 launchd。如需开机自启，请以普通用户身份安装。"
+    fi
+fi
+
+# 启用 lingering (Linux 非 root)
+if ! $IS_ROOT && ! $IS_MACOS && $HAS_SYSTEMD; then
+    if command -v loginctl > /dev/null 2>&1; then
+        info "正在启用用户 lingering（让服务在登出后继续运行）..."
+        loginctl enable-linger "$USER" 2>/dev/null || true
+    fi
 fi
 
 # 自动清理脚本自身
