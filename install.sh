@@ -8,49 +8,75 @@ GREEN="\033[32m"
 YELLOW="\033[33m"
 PLAIN="\033[0m"
 
-XRAY_BIN_DIR="/usr/local/bin"
-XRAY_BIN_PATH="${XRAY_BIN_DIR}/xray"
-XRAY_ETC_DIR="/usr/local/etc/xray"
+# root 检查与权限变量
+IS_ROOT=false
+[[ $EUID -eq 0 ]] && IS_ROOT=true
+
+if $IS_ROOT; then
+    XRAY_BIN_DIR="/usr/local/bin"
+    XRAY_BIN_PATH="${XRAY_BIN_DIR}/xray"
+    XRAY_ETC_DIR="/usr/local/etc/xray"
+    XRAY_LOG_DIR="/var/log/xray"
+    XRAY_SHORTCUT_PATH="${XRAY_BIN_DIR}/xr"
+    SYSTEMD_FILE="/etc/systemd/system/xray.service"
+    SYSTEMCTL_CMD="systemctl"
+    
+    if [[ -f /etc/openwrt_release ]]; then
+        XRAY_BIN_DIR="/usr/bin"
+        XRAY_BIN_PATH="${XRAY_BIN_DIR}/xray"
+        XRAY_ETC_DIR="/etc/xray"
+        XRAY_SHORTCUT_PATH="${XRAY_BIN_DIR}/xr"
+    fi
+else
+    XRAY_BIN_DIR="$HOME/.local/bin"
+    XRAY_BIN_PATH="${XRAY_BIN_DIR}/xray"
+    XRAY_ETC_DIR="$HOME/.local/share/xray"
+    XRAY_LOG_DIR="$HOME/.local/state/xray/log"
+    XRAY_SHORTCUT_PATH="${XRAY_BIN_DIR}/xr"
+    SYSTEMD_FILE="$HOME/.config/systemd/user/xray.service"
+    SYSTEMCTL_CMD="systemctl --user"
+fi
+
 XRAY_CONFIG_FILE="${XRAY_ETC_DIR}/config.json"
 XRAY_PUBLIC_KEY_FILE="${XRAY_ETC_DIR}/public.key"
 XRAY_SHARE_LINK_FILE="${XRAY_ETC_DIR}/share_link.txt"
-XRAY_LOG_DIR="/var/log/xray"
-XRAY_SHORTCUT_PATH="${XRAY_BIN_DIR}/xr"
-SYSTEMD_FILE="/etc/systemd/system/xray.service"
-
-if [[ -f /etc/openwrt_release ]]; then
-    XRAY_BIN_DIR="/usr/bin"
-    XRAY_BIN_PATH="${XRAY_BIN_DIR}/xray"
-    XRAY_ETC_DIR="/etc/xray"
-    XRAY_CONFIG_FILE="${XRAY_ETC_DIR}/config.json"
-    XRAY_PUBLIC_KEY_FILE="${XRAY_ETC_DIR}/public.key"
-    XRAY_SHARE_LINK_FILE="${XRAY_ETC_DIR}/share_link.txt"
-    XRAY_SHORTCUT_PATH="${XRAY_BIN_DIR}/xr"
-fi
 
 check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        echo -e "${RED}Error: This script must be run as root!${PLAIN}"
-        exit 1
+    if ! $IS_ROOT; then
+        echo -e "${YELLOW}Warning: Running as non-root user. Installation will be local to your home directory.${PLAIN}"
     fi
 }
 
 install_dependencies() {
     echo -e "${YELLOW}Installing dependencies...${PLAIN}"
-    if [[ -f /etc/debian_version ]]; then
-        apt-get update
-        apt-get install -y curl wget tar unzip jq net-tools qrencode procps gawk
-    elif [[ -f /etc/redhat-release ]]; then
-        yum install -y curl wget tar unzip jq net-tools qrencode procps
-    elif [[ -f /etc/openwrt_release ]] || [[ -f /etc/opkg.conf ]]; then
-        opkg update
-        opkg install bash curl wget-ssl unzip jq ca-bundle net-tools-netstat qrencode
-    elif [[ -f /etc/alpine-release ]]; then
-        apk update
-        apk add bash curl wget tar unzip jq util-linux net-tools qrencode ca-certificates
+    if $IS_ROOT; then
+        if [[ -f /etc/debian_version ]]; then
+            apt-get update
+            apt-get install -y curl wget tar unzip jq net-tools qrencode procps gawk
+        elif [[ -f /etc/redhat-release ]]; then
+            yum install -y curl wget tar unzip jq net-tools qrencode procps
+        elif [[ -f /etc/openwrt_release ]] || [[ -f /etc/opkg.conf ]]; then
+            opkg update
+            opkg install bash curl wget-ssl unzip jq ca-bundle net-tools-netstat qrencode
+        elif [[ -f /etc/alpine-release ]]; then
+            apk update
+            apk add bash curl wget tar unzip jq util-linux net-tools qrencode ca-certificates
+        else
+            echo -e "${RED}Unsupported OS for automatic dependency installation. Please install manually.${PLAIN}"
+        fi
     else
-        echo -e "${RED}Unsupported OS${PLAIN}"
-        exit 1
+        echo -e "${YELLOW}Non-root mode: Checking for required dependencies...${PLAIN}"
+        for cmd in curl wget tar unzip jq qrencode; do
+            if ! command -v $cmd >/dev/null 2>&1; then
+                if [[ "$cmd" == "qrencode" ]]; then
+                    echo -e "${YELLOW}Warning: 'qrencode' not found. QR code display will be skipped.${PLAIN}"
+                else
+                    echo -e "${RED}Error: Dependency '$cmd' not found. Please install it manually.${PLAIN}"
+                    exit 1
+                fi
+            fi
+        done
+        echo -e "${GREEN}Dependencies check completed.${PLAIN}"
     fi
 }
 
@@ -232,7 +258,7 @@ EOF
 setup_service() {
     echo -e "${YELLOW}Setting up Service...${PLAIN}"
     
-    if [[ -f /etc/openwrt_release ]]; then
+    if $IS_ROOT && [[ -f /etc/openwrt_release ]]; then
         cat > "/etc/init.d/xray" <<EOF
 #!/bin/sh /etc/rc.common
 START=99
@@ -255,7 +281,7 @@ EOF
         chmod +x /etc/init.d/xray
         /etc/init.d/xray enable
         /etc/init.d/xray restart
-    elif [[ -f /etc/alpine-release ]]; then
+    elif $IS_ROOT && [[ -f /etc/alpine-release ]]; then
         cat > "/etc/init.d/xray" <<EOF
 #!/sbin/openrc-run
 
@@ -274,7 +300,14 @@ EOF
         chmod +x /etc/init.d/xray
         rc-update add xray default
         service xray restart
+    elif [[ -f /etc/openwrt_release ]] || [[ -f /etc/alpine-release ]]; then
+        echo -e "${RED}Error: Non-root service setup is not supported on OpenWrt/Alpine in this script.${PLAIN}"
+        echo -e "${YELLOW}Please run as root or set up the service manually.${PLAIN}"
     else
+        if ! $IS_ROOT; then
+            mkdir -p "$(dirname "$SYSTEMD_FILE")"
+        fi
+        
         cat > "$SYSTEMD_FILE" <<EOF
 [Unit]
 Description=Xray Service
@@ -282,27 +315,32 @@ Documentation=https://github.com/xtls
 After=network.target nss-lookup.target
 
 [Service]
-User=root
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+$( $IS_ROOT && echo "User=root" )
+$( $IS_ROOT && echo "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE" )
+$( $IS_ROOT && echo "AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE" )
 NoNewPrivileges=true
 ExecStart=$XRAY_BIN_PATH run -config $XRAY_CONFIG_FILE
 Restart=on-failure
 RestartPreventExitStatus=23
 
 [Install]
-WantedBy=multi-user.target
+$( $IS_ROOT && echo "WantedBy=multi-user.target" || echo "WantedBy=default.target" )
 EOF
 
-        systemctl daemon-reload
-        systemctl enable xray
-        systemctl restart xray
+        $SYSTEMCTL_CMD daemon-reload
+        $SYSTEMCTL_CMD enable xray
+        $SYSTEMCTL_CMD restart xray
+        
+        if ! $IS_ROOT && command -v loginctl >/dev/null 2>&1; then
+            echo -e "${YELLOW}Enabling lingering for user $USER...${PLAIN}"
+            loginctl enable-linger "$USER" || true
+        fi
     fi
 }
 
 is_running() {
-    if [[ -f /etc/systemd/system/xray.service ]]; then
-        systemctl is-active xray >/dev/null 2>&1
+    if [[ -f "$SYSTEMD_FILE" ]]; then
+        $SYSTEMCTL_CMD is-active xray >/dev/null 2>&1
         return $?
     else
         # OpenWrt / Alpine (check process)
@@ -313,17 +351,21 @@ is_running() {
 
 create_shortcut() {
     echo -e "${YELLOW}Creating shortcut 'xr'...${PLAIN}"
+    mkdir -p "$(dirname "$XRAY_SHORTCUT_PATH")"
     wget -O "$XRAY_SHORTCUT_PATH" https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install.sh
     chmod +x "$XRAY_SHORTCUT_PATH"
     echo -e "${GREEN}Shortcut 'xr' created. You can run this script by typing 'xr'.${PLAIN}"
+    if ! $IS_ROOT; then
+        echo -e "${YELLOW}Note: Since you are not root, please ensure $XRAY_BIN_DIR is in your PATH to use 'xr'.${PLAIN}"
+    fi
 }
 
 restart_service() {
     echo -e "${YELLOW}Restarting Xray service...${PLAIN}"
-    if [[ -f /etc/openwrt_release ]] || [[ -f /etc/alpine-release ]]; then
+    if $IS_ROOT && ([[ -f /etc/openwrt_release ]] || [[ -f /etc/alpine-release ]]); then
         /etc/init.d/xray restart
     else
-        systemctl restart xray
+        $SYSTEMCTL_CMD restart xray
     fi
 }
 
@@ -384,6 +426,11 @@ open_port() {
     local port=$1
     [[ -z "$port" ]] && return
 
+    if ! $IS_ROOT; then
+        echo -e "${YELLOW}Skipping port opening (requires root). Please ensure port $port is open in your firewall.${PLAIN}"
+        return
+    fi
+
     echo -e "${YELLOW}Opening port $port...${PLAIN}"
 
     if [[ -f /etc/openwrt_release ]]; then
@@ -409,6 +456,10 @@ open_port() {
 close_port() {
     local port=$1
     [[ -z "$port" ]] && return
+
+    if ! $IS_ROOT; then
+        return
+    fi
 
     echo -e "${YELLOW}Closing port $port...${PLAIN}"
 
@@ -455,7 +506,7 @@ uninstall_xray() {
         done
     fi
 
-    if [[ -f /etc/openwrt_release ]] || [[ -f /etc/alpine-release ]]; then
+    if $IS_ROOT && ([[ -f /etc/openwrt_release ]] || [[ -f /etc/alpine-release ]]); then
         /etc/init.d/xray stop
         if command -v rc-update >/dev/null; then
             rc-update del xray default
@@ -464,13 +515,13 @@ uninstall_xray() {
         fi
         rm -f /etc/init.d/xray
     else
-        systemctl stop xray
-        systemctl disable xray
+        $SYSTEMCTL_CMD stop xray
+        $SYSTEMCTL_CMD disable xray
         rm -f "$SYSTEMD_FILE"
-        systemctl daemon-reload
+        $SYSTEMCTL_CMD daemon-reload
     fi
     
-    rm -rf "$XRAY_BIN_PATH"
+    rm -f "$XRAY_BIN_PATH"
     rm -rf "$XRAY_ETC_DIR"
     rm -rf "$XRAY_LOG_DIR"
     rm -f "$XRAY_SHORTCUT_PATH"
@@ -552,6 +603,10 @@ change_sni() {
 }
 
 toggle_bbr() {
+    if ! $IS_ROOT; then
+        echo -e "${RED}Error: Modifying BBR requires root privileges.${PLAIN}"
+        return
+    fi
     if [[ -f /etc/sysctl.conf ]]; then
         if grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.conf; then
             echo -e "${YELLOW}Disabling BBR...${PLAIN}"
