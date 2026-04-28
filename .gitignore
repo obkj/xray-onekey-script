@@ -1,3 +1,5 @@
 .claude/settings.local.json
 /.claude
 *.json
+/xray_win
+*.zip
