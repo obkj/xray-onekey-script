@@ -59,7 +59,7 @@ install_xray() {
         *) XRAY_ASSET="Xray-linux-64.zip" ;;
     esac
     
-    URL="https://github.com/XTLS/Xray-core/releases/latest/download/${XRAY_ASSET}"
+    URL="https://github.com/obkj/xray-onekey-script/releases/latest/download/${XRAY_ASSET}"
     curl -fL -o "${WORK_DIR}/xray.zip" "${URL}"
     unzip -o "${WORK_DIR}/xray.zip" -d "${WORK_DIR}/" > /dev/null 2>&1
     chmod +x "${XRAY_BIN}"
@@ -112,10 +112,15 @@ install_portal() {
         RANDOM_PORT=$(awk 'BEGIN { srand(); print int(10000 + rand() * 50000) }')
         read -p "请输入服务端监听端口 (默认 ${RANDOM_PORT}): " LISTEN_PORT
         LISTEN_PORT=${LISTEN_PORT:-${RANDOM_PORT}}
-        read -p "请输入用户访问路径 (默认 /user): " USER_PATH
-        USER_PATH=${USER_PATH:-/user}
-        read -p "请输入隧道连接路径 (默认 /tunnel): " TUNNEL_PATH
-        TUNNEL_PATH=${TUNNEL_PATH:-/tunnel}
+        
+        # 生成随机路径
+        RAND_USER=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)
+        RAND_TUNNEL=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)
+        
+        read -p "请输入用户访问路径 (默认 /user_${RAND_USER}): " USER_PATH
+        USER_PATH=${USER_PATH:-/user_${RAND_USER}}
+        read -p "请输入隧道连接路径 (默认 /tunnel_${RAND_TUNNEL}): " TUNNEL_PATH
+        TUNNEL_PATH=${TUNNEL_PATH:-/tunnel_${RAND_TUNNEL}}
     else
         read -p "请输入用户访问端口 (默认 8080): " EXT_PORT
         EXT_PORT=${EXT_PORT:-8080}
@@ -168,12 +173,20 @@ EOF
     if [[ "$CONN_MODE" == "1" ]]; then
         g "\n✅ 服务端安装完成！(Cloudflare 模式)"
         echo -e "请在 CF Origin Rules 中配置转发到端口: ${CYAN}${LISTEN_PORT}${RESET}"
+        echo -e "\n--- 客户端配置参考 ---"
+        echo -e "UUID: ${PURPLE}${UUID}${RESET}"
+        echo -e "隧道路径: ${CYAN}${TUNNEL_PATH}${RESET}"
+        echo -e "识别域名: ${CYAN}${REV_DOMAIN}${RESET}"
     else
         g "\n✅ 服务端安装完成！(直连 IP 模式)"
         echo -e "用户访问端口: ${CYAN}${EXT_PORT}${RESET}"
         echo -e "隧道连接端口: ${CYAN}${TUNNEL_PORT}${RESET}"
+        echo -e "\n--- 客户端配置参考 ---"
+        echo -e "UUID: ${PURPLE}${UUID}${RESET}"
+        echo -e "服务端地址: ${CYAN}您的 VPS IP${RESET}"
+        echo -e "服务端端口: ${CYAN}${TUNNEL_PORT}${RESET}"
+        echo -e "识别域名: ${CYAN}${REV_DOMAIN}${RESET}"
     fi
-    echo -e "UUID: ${PURPLE}${UUID}${RESET}"
 }
 
 # -----------------------------------------------------------------------------
@@ -316,8 +329,10 @@ add_portal_client() {
     c "\n--- 为服务端添加新客户端 ---"
     read -p "请输入新客户端的识别域名 (如 reverse2.local): " NEW_REV_DOMAIN
     [[ -z "${NEW_REV_DOMAIN}" ]] && fail "必须输入域名"
-    read -p "请输入该客户端的用户访问路径 (如 /user2): " NEW_USER_PATH
-    [[ -z "${NEW_USER_PATH}" ]] && fail "必须输入路径"
+    
+    RAND_USER=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)
+    read -p "请输入该客户端的用户访问路径 (默认 /user_${RAND_USER}): " NEW_USER_PATH
+    NEW_USER_PATH=${NEW_USER_PATH:-/user_${RAND_USER}}
     
     NEW_TAG="portal_$(date +%s)"
     

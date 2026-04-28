@@ -50,7 +50,6 @@ curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install.
    - 解析域名到 VPS IP。
    - 在 **Origin Rules** 中设置：如果路径包含 `/user` 或 `/tunnel`，则回源端口改为您的监听端口。
 3. **客户端**：安装 Bridge，选择对应的识别域名。
-4. **参考配置**：[服务端示例](./examples/server.json) | [客户端示例](./examples/client.json)
 
 ---
 
