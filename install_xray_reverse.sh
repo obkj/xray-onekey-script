@@ -34,11 +34,17 @@ IS_ROOT=false
 [[ $EUID -eq 0 ]] && IS_ROOT=true
 
 # 目录与路径
-TARGET_HOME="$HOME"
-if [[ "$IS_ROOT" == "true" && -n "${SUDO_USER:-}" ]] && command -v getent >/dev/null 2>&1; then
-    TARGET_HOME="$(getent passwd "${SUDO_USER}" | cut -d: -f6)"
+LOOKUP_USER="${SUDO_USER:-$(id -un)}"
+TARGET_HOME="${HOME:-}"
+if [[ -z "${TARGET_HOME}" || ( "$IS_ROOT" == "true" && -n "${SUDO_USER:-}" ) ]]; then
+    if command -v getent >/dev/null 2>&1; then
+        TARGET_HOME="$(getent passwd "${LOOKUP_USER}" 2>/dev/null | cut -d: -f6)"
+    fi
+    if [[ -z "${TARGET_HOME}" && -r /etc/passwd ]]; then
+        TARGET_HOME="$(awk -F: -v user="${LOOKUP_USER}" '$1 == user { print $6; exit }' /etc/passwd)"
+    fi
 fi
-[[ -z "${TARGET_HOME}" ]] && TARGET_HOME="$HOME"
+[[ -z "${TARGET_HOME}" ]] && fail "无法确定用户目录，请先设置 HOME 环境变量"
 WORK_DIR="${TARGET_HOME}/.local/share/xray-rev"
 XRAY_BIN="${TARGET_HOME}/.local/bin/xray-rev"
 CONFIG_FILE="${WORK_DIR}/config.json"
@@ -49,7 +55,7 @@ command -v systemctl >/dev/null 2>&1 && HAS_SYSTEMD=true
 SYSTEMCTL_CMD="systemctl --user"
 USER_SYSTEMD_UID=""
 if [[ "$IS_ROOT" == "true" && -n "${SUDO_USER:-}" ]]; then
-    USER_SYSTEMD_UID="$(id -u "$SUDO_USER")"
+    USER_SYSTEMD_UID="$(id -u "$SUDO_USER" 2>/dev/null || true)"
 fi
 
 run_user_systemctl() {
