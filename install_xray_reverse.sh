@@ -294,7 +294,7 @@ install_portal() {
   "inbounds": [
     {
       "tag": "ext_in", "port": ${LISTEN_PORT}, "protocol": "vmess",
-      "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "none" }] },
+      "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] },
       "streamSettings": { "network": "ws" },
       "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
     }
@@ -317,8 +317,8 @@ EOF
   "log": { "loglevel": "none" },
   "reverse": { "portals": [{ "tag": "portal", "domain": "${REV_DOMAIN}" }] },
   "inbounds": [
-    { "tag": "ext_in", "port": ${EXT_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "none" }] }, "sniffing": { "enabled": true, "destOverride": ["http", "tls"] } },
-    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "none" }] }, "sniffing": { "enabled": true, "destOverride": ["http", "tls"] } }
+    { "tag": "ext_in", "port": ${EXT_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] }, "sniffing": { "enabled": true, "destOverride": ["http", "tls"] } },
+    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] }, "sniffing": { "enabled": true, "destOverride": ["http", "tls"] } }
   ],
   "routing": {
     "rules": [
@@ -453,7 +453,7 @@ install_bridge() {
   "outbounds": [
     {
       "tag": "tunnel_out", "protocol": "vmess",
-      "settings": { "vnext": [{ "address": "${SERVER_ADDR}", "port": ${SERVER_PORT}, "users": [{ "id": "${UUID}", "alterId": 0, "security": "none" }] }] },
+      "settings": { "vnext": [{ "address": "${SERVER_ADDR}", "port": ${SERVER_PORT}, "users": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] }] },
       "streamSettings": ${STREAM_SETTINGS}
     },
     { "tag": "local_service", "protocol": "freedom", "settings": ${OUTBOUND_SETTINGS} },
