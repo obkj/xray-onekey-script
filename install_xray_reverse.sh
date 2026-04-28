@@ -2,7 +2,7 @@
 # =============================================================================
 # Xray-2go 原生反向代理（VMess + WS + CF 专用版）
 # 专为套 Cloudflare CDN 设计，支持双路径分流与内网穿透
-# 版本: 1.2.0 (2026-04-28)
+# 版本: 1.3.0 (2026-04-28)
 # =============================================================================
 
 set -euo pipefail
@@ -295,8 +295,7 @@ install_portal() {
     {
       "tag": "ext_in", "port": ${LISTEN_PORT}, "protocol": "vmess",
       "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] },
-      "streamSettings": { "network": "ws" },
-      "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
+      "streamSettings": { "network": "ws" }
     }
   ],
   "routing": {
@@ -317,8 +316,8 @@ EOF
   "log": { "loglevel": "none" },
   "reverse": { "portals": [{ "tag": "portal", "domain": "${REV_DOMAIN}" }] },
   "inbounds": [
-    { "tag": "ext_in", "port": ${EXT_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] }, "sniffing": { "enabled": true, "destOverride": ["http", "tls"] } },
-    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] }, "sniffing": { "enabled": true, "destOverride": ["http", "tls"] } }
+    { "tag": "ext_in", "port": ${EXT_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] } },
+    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] } }
   ],
   "routing": {
     "rules": [
@@ -464,8 +463,7 @@ install_bridge() {
       { "type": "field", "inboundTag": ["bridge"], "domain": ["full:${REV_DOMAIN}"], "outboundTag": "tunnel_out" },
       { "type": "field", "inboundTag": ["bridge"], "outboundTag": "local_service" }
     ]
-  },
-  "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
+  }
 }
 EOF
     setup_service
@@ -515,7 +513,7 @@ main_menu() {
     clear
     p "================================================="
     p "    Xray 原生反代 (VMess+WS+CF) 一键管理脚本     "
-    p "              版本: 1.2.0 (2026-04-28)           "
+    p "              版本: 1.3.0 (2026-04-28)           "
     p "================================================="
     echo -e "  1) ${GREEN}安装服务端 (Portal)${RESET}"
     echo -e "  2) ${GREEN}安装客户端 (Bridge)${RESET}"
