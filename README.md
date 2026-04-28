@@ -11,19 +11,19 @@
 ### 1. 🚀 原生反代版 (推荐)
 **特点**：专为套 CF 设计，支持单端口双路径、多客户端映射、出口模式。
 ```bash
-wget -N https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_xray_reverse.sh && bash install_xray_reverse.sh
+curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_xray_reverse.sh -o install_xray_reverse.sh && bash install_xray_reverse.sh
 ```
 
 ### 2. ☁️ Argo 隧道版
 **特点**：使用 Cloudflare Argo Tunnel 临时隧道，无需开放端口，适合内网无公网 IP 环境。
 ```bash
-wget -N https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh && bash install_argo.sh
+curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh -o install_argo.sh && bash install_argo.sh
 ```
 
 ### 3. 🛠️ 常规交互版
 **特点**：全功能菜单，支持多种协议（VLESS/VMess/Trojan）的常规部署。
 ```bash
-wget -N https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install.sh && bash install.sh
+curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install.sh -o install.sh && bash install.sh
 ```
 
 ---
