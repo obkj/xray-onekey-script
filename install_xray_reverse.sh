@@ -79,15 +79,26 @@ install_xray() {
         'aarch64'|'arm64') XRAY_ASSET="Xray-linux-arm64-v8a.zip" ;;
         *) XRAY_ASSET="Xray-linux-64.zip" ;;
     esac
-    
+
     URL="https://github.com/obkj/xray-onekey-script/releases/latest/download/${XRAY_ASSET}"
     curl -fL -o "${WORK_DIR}/xray.zip" "${URL}"
     unzip -o "${WORK_DIR}/xray.zip" -d "${WORK_DIR}/" > /dev/null 2>&1
     mkdir -p "$(dirname "${XRAY_BIN}")"
-    [[ -f "${WORK_DIR}/xray" ]] && mv -f "${WORK_DIR}/xray" "${XRAY_BIN}"
+    [[ -f "${WORK_DIR}/xray" ]] || fail "Xray 内核文件缺失，解压后未找到 xray 可执行文件"
+    mv -f "${WORK_DIR}/xray" "${XRAY_BIN}"
     chmod +x "${XRAY_BIN}"
+    [[ -x "${XRAY_BIN}" ]] || fail "Xray 内核安装失败，未生成可执行文件 ${XRAY_BIN}"
     rm -f "${WORK_DIR}/xray.zip"
     ok "Xray 安装完成"
+}
+
+restart_service() {
+    if $HAS_SYSTEMD; then
+        run_user_systemctl restart xray-rev
+    else
+        pkill -f "${XRAY_BIN}" || true
+        "${XRAY_BIN}" run -c "${CONFIG_FILE}" > /dev/null 2>&1 &
+    fi
 }
 
 setup_service() {
@@ -110,11 +121,10 @@ WantedBy=default.target
 EOF
         run_user_systemctl daemon-reload
         run_user_systemctl enable xray-rev --now >/dev/null 2>&1 || true
-        run_user_systemctl restart xray-rev
+        restart_service
         ok "服务已启动并设为开机自启"
     else
-        pkill -f "${XRAY_BIN}" || true
-        "${XRAY_BIN}" run -c "${CONFIG_FILE}" > /dev/null 2>&1 &
+        restart_service
         ok "服务已在后台启动"
     fi
 }
@@ -200,6 +210,7 @@ EOF
 }
 EOF
     fi
+    setup_service
     if [[ "$CONN_MODE" == "1" ]]; then
         g "\n✅ 服务端安装完成！(Cloudflare 模式)"
         echo -e "请在 CF Origin Rules 中配置转发到端口: ${CYAN}${LISTEN_PORT}${RESET}"
@@ -373,7 +384,7 @@ add_portal_client() {
         .routing.rules = [{\"type\": \"field\", \"path\": [\"${NEW_USER_PATH}\"], \"outboundTag\": \"${NEW_TAG}\"}] + .routing.rules" \
         "$CONFIG_FILE" > "$tmp_config" && mv "$tmp_config" "$CONFIG_FILE"
 
-    $SYSTEMCTL_CMD restart xray-rev
+    restart_service
     g "\n✅ 客户端添加成功！"
     echo -e "新服务路径: ${CYAN}${NEW_USER_PATH}${RESET}"
     echo -e "匹配域名: ${CYAN}${NEW_REV_DOMAIN}${RESET}"
@@ -416,7 +427,7 @@ manage_vmess_mapping() {
                 .routing.rules = [{\"type\": \"field\", \"inboundTag\": [\"${MAP_TAG}\"], \"outboundTag\": \"${TARGET_TAG}\"}] + .routing.rules" \
                 "$CONFIG_FILE" > "$tmp_config" && mv "$tmp_config" "$CONFIG_FILE"
             
-            $SYSTEMCTL_CMD restart xray-rev
+            restart_service
             g "✅ 映射添加成功！端口 ${NEW_PORT} -> 客户端 ${TARGET_DOMAIN}"
             ;;
         2)
@@ -432,7 +443,7 @@ manage_vmess_mapping() {
                 del(.routing.rules[] | select(.inboundTag != null and .inboundTag[0] == \"${MAP_TAG}\"))" \
                 "$CONFIG_FILE" > "$tmp_config" && mv "$tmp_config" "$CONFIG_FILE"
             
-            $SYSTEMCTL_CMD restart xray-rev
+            restart_service
             g "✅ 映射端口 ${DEL_PORT} 已删除"
             ;;
         *) return ;;
