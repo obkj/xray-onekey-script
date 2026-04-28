@@ -34,19 +34,31 @@ IS_ROOT=false
 [[ $EUID -eq 0 ]] && IS_ROOT=true
 
 # 目录与路径
-WORK_DIR="/etc/xray-rev"
-XRAY_BIN="/usr/local/bin/xray-rev"
-if [[ "$IS_ROOT" == "false" ]]; then
-    WORK_DIR="$HOME/.local/share/xray-rev"
-    XRAY_BIN="$HOME/.local/bin/xray-rev"
+TARGET_HOME="$HOME"
+if [[ "$IS_ROOT" == "true" && -n "${SUDO_USER:-}" ]] && command -v getent >/dev/null 2>&1; then
+    TARGET_HOME="$(getent passwd "${SUDO_USER}" | cut -d: -f6)"
 fi
+[[ -z "${TARGET_HOME}" ]] && TARGET_HOME="$HOME"
+WORK_DIR="${TARGET_HOME}/.local/share/xray-rev"
+XRAY_BIN="${TARGET_HOME}/.local/bin/xray-rev"
 CONFIG_FILE="${WORK_DIR}/config.json"
 
 # 检查权限与 systemd
 HAS_SYSTEMD=false
 command -v systemctl >/dev/null 2>&1 && HAS_SYSTEMD=true
-SYSTEMCTL_CMD="systemctl"
-[[ "$IS_ROOT" == "false" ]] && SYSTEMCTL_CMD="systemctl --user"
+SYSTEMCTL_CMD="systemctl --user"
+USER_SYSTEMD_UID=""
+if [[ "$IS_ROOT" == "true" && -n "${SUDO_USER:-}" ]]; then
+    USER_SYSTEMD_UID="$(id -u "$SUDO_USER")"
+fi
+
+run_user_systemctl() {
+    if [[ "$IS_ROOT" == "true" && -n "${SUDO_USER:-}" && -n "${USER_SYSTEMD_UID}" ]]; then
+        su - "$SUDO_USER" -c "XDG_RUNTIME_DIR=/run/user/${USER_SYSTEMD_UID} systemctl --user $*"
+    else
+        $SYSTEMCTL_CMD "$@"
+    fi
+}
 
 # -----------------------------------------------------------------------------
 # 核心逻辑：安装组件
@@ -74,8 +86,10 @@ install_xray() {
 
 setup_service() {
     step "配置系统服务"
+    mkdir -p "$(dirname "$XRAY_BIN")"
+    mkdir -p "${TARGET_HOME}/.config/systemd/user"
     if $HAS_SYSTEMD; then
-        if $IS_ROOT; then SVCPATH="/etc/systemd/system"; else SVCPATH="$HOME/.config/systemd/user"; mkdir -p "$SVCPATH"; fi
+        SVCPATH="${TARGET_HOME}/.config/systemd/user"
         cat > "$SVCPATH/xray-rev.service" << EOF
 [Unit]
 Description=Xray Reverse Proxy (CF Mode)
@@ -86,11 +100,11 @@ ExecStart=${XRAY_BIN} run -c ${CONFIG_FILE}
 Restart=on-failure
 
 [Install]
-WantedBy=$( $IS_ROOT && echo "multi-user.target" || echo "default.target" )
+WantedBy=default.target
 EOF
-        $SYSTEMCTL_CMD daemon-reload
-        $SYSTEMCTL_CMD enable xray-rev --now >/dev/null 2>&1 || true
-        $SYSTEMCTL_CMD restart xray-rev
+        run_user_systemctl daemon-reload
+        run_user_systemctl enable xray-rev --now >/dev/null 2>&1 || true
+        run_user_systemctl restart xray-rev
         ok "服务已启动并设为开机自启"
     else
         pkill -f "${XRAY_BIN}" || true
@@ -278,7 +292,7 @@ EOF
 
 show_status() {
     if $HAS_SYSTEMD; then
-        $SYSTEMCTL_CMD status xray-rev --no-pager || y "服务未运行"
+        run_user_systemctl status xray-rev --no-pager || y "服务未运行"
     else
         pgrep -f "${XRAY_BIN}" > /dev/null && g "Xray 正在运行" || r "Xray 已停止"
     fi
@@ -288,13 +302,14 @@ uninstall() {
     read -p "确定要卸载吗？(y/n): " confirm
     [[ "$confirm" != "y" ]] && return
     if $HAS_SYSTEMD; then
-        $SYSTEMCTL_CMD stop xray-rev >/dev/null 2>&1 || true
-        $SYSTEMCTL_CMD disable xray-rev >/dev/null 2>&1 || true
-        if $IS_ROOT; then rm -f /etc/systemd/system/xray-rev.service; else rm -f "$HOME/.config/systemd/user/xray-rev.service"; fi
-        $SYSTEMCTL_CMD daemon-reload
+        run_user_systemctl stop xray-rev >/dev/null 2>&1 || true
+        run_user_systemctl disable xray-rev >/dev/null 2>&1 || true
+        rm -f "$TARGET_HOME/.config/systemd/user/xray-rev.service"
+        run_user_systemctl daemon-reload
     fi
     pkill -f "${XRAY_BIN}" || true
     rm -rf "${WORK_DIR}"
+    rm -f "${XRAY_BIN}"
     g "卸载成功！"
 }
 
