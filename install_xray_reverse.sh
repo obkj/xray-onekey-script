@@ -111,8 +111,8 @@ install_portal() {
     echo -e "\n请选择连接方式:"
     echo -e "  1) ${CYAN}Cloudflare 模式${RESET} (WS + TLS, 单端口双路径, 适合套 CDN)"
     echo -e "  2) ${CYAN}直连 IP 模式${RESET} (TCP, 双端口, 适合直接连接, 无需域名)"
-    read -p "请选择 (1/2, 默认 1): " CONN_MODE
-    CONN_MODE=${CONN_MODE:-1}
+    read -p "请选择 (1/2, 默认 2): " CONN_MODE
+    CONN_MODE=${CONN_MODE:-2}
 
     if [[ "$CONN_MODE" == "1" ]]; then
         RANDOM_PORT=$(awk 'BEGIN { srand(); print int(10000 + rand() * 50000) }')
@@ -208,8 +208,8 @@ install_bridge() {
     echo -e "\n请选择连接方式:"
     echo -e "  1) ${CYAN}Cloudflare 模式${RESET} (WS + TLS, 端口 443)"
     echo -e "  2) ${CYAN}直连 IP 模式${RESET} (TCP, 自定义端口)"
-    read -p "请选择 (1/2, 默认 1): " CONN_MODE
-    CONN_MODE=${CONN_MODE:-1}
+    read -p "请选择 (1/2, 默认 2): " CONN_MODE
+    CONN_MODE=${CONN_MODE:-2}
 
     read -p "请输入公网服务器 IP 或域名: " SERVER_ADDR
     [[ -z "${SERVER_ADDR}" ]] && fail "必须输入地址"
