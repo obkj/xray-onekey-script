@@ -98,6 +98,37 @@ install_xray() {
     ok "Xray 安装完成"
 }
 
+detect_public_ip() {
+    local ip=""
+    ip="$(curl -4fsS https://api.ipify.org 2>/dev/null || true)"
+    [[ -n "$ip" ]] || ip="$(curl -4fsS https://ipv4.icanhazip.com 2>/dev/null || true)"
+    printf '%s' "$ip" | tr -d '\r\n'
+}
+
+generate_vmess_link() {
+    local ps="$1"
+    local address="$2"
+    local port="$3"
+    local uuid="$4"
+    local network="$5"
+    local ws_path="$6"
+    local host="$7"
+    local tls_mode="$8"
+    local sni="$9"
+
+    jq -cn \
+        --arg ps "$ps" \
+        --arg add "$address" \
+        --arg port "$port" \
+        --arg id "$uuid" \
+        --arg net "$network" \
+        --arg path "$ws_path" \
+        --arg host "$host" \
+        --arg tls "$tls_mode" \
+        --arg sni "$sni" \
+        '{v:"2",ps:$ps,add:$add,port:$port,id:$id,aid:"0",scy:"auto",net:$net,type:"none",host:$host,path:$path,tls:$tls,sni:$sni}' | base64 | tr -d '\r\n'
+}
+
 restart_service() {
     pkill -f "${XRAY_BIN}" || true
     "${XRAY_BIN}" run -c "${CONFIG_FILE}" > /dev/null 2>&1 &
@@ -155,15 +186,17 @@ install_portal() {
         RANDOM_PORT=$(awk 'BEGIN { srand(); print int(10000 + rand() * 50000) }')
         read -p "请输入服务端监听端口 (默认 ${RANDOM_PORT}): " LISTEN_PORT
         LISTEN_PORT=${LISTEN_PORT:-${RANDOM_PORT}}
-        
+
         # 生成随机路径
         RAND_USER=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)
         RAND_TUNNEL=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)
-        
+
         read -p "请输入用户访问路径 (默认 /user_${RAND_USER}): " USER_PATH
         USER_PATH=${USER_PATH:-/user_${RAND_USER}}
         read -p "请输入隧道连接路径 (默认 /tunnel_${RAND_TUNNEL}): " TUNNEL_PATH
         TUNNEL_PATH=${TUNNEL_PATH:-/tunnel_${RAND_TUNNEL}}
+        read -p "请输入用于客户端连接的域名: " SHARE_DOMAIN
+        [[ -z "${SHARE_DOMAIN}" ]] && fail "必须输入用于客户端连接的域名"
     else
         RAND_EXT=$(awk 'BEGIN { srand(); print int(10000 + rand() * 45000) }')
         RAND_TUN=$(awk 'BEGIN { srand(); print int(45001 + rand() * 15000) }')
@@ -171,6 +204,13 @@ install_portal() {
         EXT_PORT=${EXT_PORT:-${RAND_EXT}}
         read -p "请输入隧道连接端口 (默认 ${RAND_TUN}): " TUNNEL_PORT
         TUNNEL_PORT=${TUNNEL_PORT:-${RAND_TUN}}
+        SHARE_DOMAIN="$(detect_public_ip)"
+        if [[ -n "${SHARE_DOMAIN}" ]]; then
+            info "已自动获取公网 IP: ${SHARE_DOMAIN}"
+        else
+            read -p "自动获取公网 IP 失败，请手动输入服务端 IP: " SHARE_DOMAIN
+            [[ -z "${SHARE_DOMAIN}" ]] && fail "必须输入服务端 IP"
+        fi
     fi
     
     install_xray
@@ -215,21 +255,27 @@ EOF
     fi
     setup_service
     if [[ "$CONN_MODE" == "1" ]]; then
+        VMESS_LINK="vmess://$(generate_vmess_link "xray-rev-cf" "${SHARE_DOMAIN}" "443" "${UUID}" "ws" "${USER_PATH}" "${SHARE_DOMAIN}" "tls" "${SHARE_DOMAIN}")"
         g "\n✅ 服务端安装完成！(Cloudflare 模式)"
         echo -e "请在 CF Origin Rules 中配置转发到端口: ${CYAN}${LISTEN_PORT}${RESET}"
+        echo -e "接入域名: ${CYAN}${SHARE_DOMAIN}${RESET}"
         echo -e "\n--- 客户端配置参考 ---"
         echo -e "UUID: ${PURPLE}${UUID}${RESET}"
+        echo -e "用户路径: ${CYAN}${USER_PATH}${RESET}"
         echo -e "隧道路径: ${CYAN}${TUNNEL_PATH}${RESET}"
         echo -e "识别域名: ${CYAN}${REV_DOMAIN}${RESET}"
+        echo -e "V2rayN 分享链接: ${GREEN}${VMESS_LINK}${RESET}"
     else
+        VMESS_LINK="vmess://$(generate_vmess_link "xray-rev-direct" "${SHARE_DOMAIN}" "${EXT_PORT}" "${UUID}" "tcp" "" "" "" "")"
         g "\n✅ 服务端安装完成！(直连 IP 模式)"
         echo -e "用户访问端口: ${CYAN}${EXT_PORT}${RESET}"
         echo -e "隧道连接端口: ${CYAN}${TUNNEL_PORT}${RESET}"
         echo -e "\n--- 客户端配置参考 ---"
         echo -e "UUID: ${PURPLE}${UUID}${RESET}"
-        echo -e "服务端地址: ${CYAN}您的 VPS IP${RESET}"
-        echo -e "服务端端口: ${CYAN}${TUNNEL_PORT}${RESET}"
+        echo -e "服务端地址: ${CYAN}${SHARE_DOMAIN}${RESET}"
+        echo -e "服务端端口: ${CYAN}${EXT_PORT}${RESET}"
         echo -e "识别域名: ${CYAN}${REV_DOMAIN}${RESET}"
+        echo -e "V2rayN 分享链接: ${GREEN}${VMESS_LINK}${RESET}"
     fi
 }
 
