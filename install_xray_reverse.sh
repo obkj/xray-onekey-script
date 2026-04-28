@@ -303,7 +303,11 @@ EOF
     setup_service
     g "\n✅ 客户端安装完成！"
     echo -e "已通过域名 ${CYAN}${SERVER_ADDR}${RESET} 建立隧道"
-    echo -e "内网目标: ${CYAN}${LOCAL_TARGET}${RESET}"
+    if [[ "$BRIDGE_MODE" == "1" ]]; then
+        echo -e "内网目标: ${CYAN}${LOCAL_TARGET}${RESET}"
+    else
+        echo -e "工作模式: ${CYAN}出口模式${RESET}"
+    fi
 }
 
 # -----------------------------------------------------------------------------
