@@ -37,7 +37,7 @@ IS_ROOT=false
 WORK_DIR="/etc/xray-rev"
 [[ "$IS_ROOT" == "false" ]] && WORK_DIR="$HOME/.local/share/xray-rev"
 CONFIG_FILE="${WORK_DIR}/config.json"
-XRAY_BIN="${WORK_DIR}/xray"
+XRAY_BIN="${WORK_DIR}/xray-rev"
 
 # 检查权限与 systemd
 HAS_SYSTEMD=false
@@ -62,6 +62,7 @@ install_xray() {
     URL="https://github.com/obkj/xray-onekey-script/releases/latest/download/${XRAY_ASSET}"
     curl -fL -o "${WORK_DIR}/xray.zip" "${URL}"
     unzip -o "${WORK_DIR}/xray.zip" -d "${WORK_DIR}/" > /dev/null 2>&1
+    [[ -f "${WORK_DIR}/xray" ]] && mv -f "${WORK_DIR}/xray" "${XRAY_BIN}"
     chmod +x "${XRAY_BIN}"
     rm -f "${WORK_DIR}/xray.zip"
     ok "Xray 安装完成"
