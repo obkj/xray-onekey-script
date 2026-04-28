@@ -1,9 +1,6 @@
 {
-  "log": { "loglevel": "info" },
+  "log": { "loglevel": "none" },
   "reverse": { "bridges": [{ "tag": "bridge", "domain": "reverse.local" }] },
-  "inbounds": [
-    { "tag": "local_proxy", "port": 1080, "protocol": "socks", "settings": { "auth": "noauth", "udp": true } }
-  ],
   "outbounds": [
     {
       "tag": "tunnel_out",
@@ -19,17 +16,20 @@
         "network": "ws",
         "security": "tls",
         "tlsSettings": { "serverName": "YOUR_CF_DOMAIN.com" },
-        "wsSettings": { "path": "/tunnel-path" }
+        "wsSettings": { "path": "/tunnel" }
       }
     },
-    { "tag": "local_service", "protocol": "freedom", "settings": { "redirect": "127.0.0.1:80" } },
-    { "tag": "direct", "protocol": "freedom" }
+    {
+      "tag": "out_internet",
+      "protocol": "freedom",
+      "settings": {}
+    }
   ],
   "routing": {
     "rules": [
-      { "type": "field", "inboundTag": ["reverse_bridge"], "outboundTag": "local_service" },
-      { "type": "field", "inboundTag": ["local_proxy"], "outboundTag": "direct" },
+      { "type": "field", "inboundTag": ["bridge"], "outboundTag": "out_internet" },
       { "type": "field", "outboundTag": ["tunnel_out"], "network": "tcp,udp" }
     ]
-  }
+  },
+  "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
 }

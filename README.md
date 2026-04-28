@@ -1,108 +1,71 @@
-支持 **macOS** 和 **Linux**，一键生成 VMess-Argo-WS 隧道节点，支持自定义 CF 优选 IP。
+# Xray-2go 一键内网穿透脚本 (VMess + WS + CF 专用版)
 
-- **极简安装**：支持 **macOS** 和 **Linux**，一键生成 VMess-Argo-WS 隧道节点。
-- **自动检测提权**：检测到非 root 权限时自动尝试使用 `sudo` 重新运行。
-- **高可用重试**：安装过程中自动探测 Argo 域名状态，若遇 530/1033 错误自动重启重试（最多 5 次）。
-- **智能管理**：提供 `2go` 快捷管理脚本，集成启动、停止、重启、查看日志与节点等功能。
-- **配置优化**：所有监听端口均采用 50000 以上的随机端口，增强安全性。
+利用 Xray 原生 `reverse` 模块实现的专业内网穿透方案。专为 Cloudflare CDN 环境优化，支持通过单端口双路径或独立 VMess 端口进行流量分发。
+
+## 🌟 核心特性
+
+- **可视化菜单**：集成安装、管理、映射、卸载于一体。
+- **单端口多路径**：只需一个回源端口，通过 `/user` 和 `/tunnel` 路径区分用户流量与隧道流量。
+- **多客户端支持**：服务端可动态添加多个内网客户端映射，支持路径隔离或端口隔离。
+- **双工作模式**：
+  - **转发模式**：将公网流量转发至内网 Web/数据库等服务。
+  - **出口模式**：将内网客户端作为上网出口，实现通过穿透隧道访问互联网（YouTube 等）。
+- **二次加密**：强制使用 VMess (aes-128-gcm) + WebSocket + TLS，在 CDN 环境下保护数据隐私。
 
 ---
 
-| 节点 | 协议 | 传输 | 穿透 | 说明 |
-|------|------|------|------|------|
-| Argo VMess-WS | VMess | WebSocket | Cloudflare Tunnel | 默认直连域名，可选优选 IP |
-| Native Reverse | VMess | WebSocket | CF Origin Rules | 专为套 CF 设计的双路径穿透方案 |
-
----
-
-## 快速安装
-
-### `install_argo.sh` — 无交互版（推荐）
-
-支持 **macOS** 和 **Linux**，自动完成所有步骤，无需人工输入。
-
-```bash
-curl -Lo install_argo.sh "https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s)" && chmod +x install_argo.sh && ./install_argo.sh
-```
-
-安装完成后自动输出所有节点链接，并创建快捷管理命令 `2go`。
-
-### `install_xray_reverse.sh` — 原生反代版 (VMess + WS + CF)
-
-专为套 Cloudflare 设计。支持 **Portal (服务端)** 与 **Bridge (客户端)** 角色切换，支持双路径回源与 VMess 加密。
+## 🚀 快速安装
 
 ```bash
 curl -Lo install_xray_reverse.sh "https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_xray_reverse.sh?t=$(date +%s)" && chmod +x install_xray_reverse.sh && ./install_xray_reverse.sh
 ```
 
-**示例配置：** [服务端 (server.json)](./server.json) | [客户端 (client.json)](./client.json)
+---
 
-### `install.sh` — 交互版（Linux）
+## 🛠️ 功能说明
 
-仅支持 **Linux（Debian / Ubuntu / CentOS / Alpine）**，包含完整菜单管理界面。
+### 1. 安装服务端 (Portal)
+运行在具有公网 IP 的 VPS 上。建议开启 Cloudflare Proxy。
+- **监听端口**：服务端接收流量的端口（建议使用随机高位端口）。
+- **路径分流**：根据 URL Path 将请求分发给对应的反代标签。
 
-```bash
-bash <(curl -Ls https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install.sh)
-```
+### 2. 添加新客户端配置 (仅服务端)
+当您需要穿透多个内网设备时，在服务端运行此选项。
+- 为每个设备分配唯一的**识别域名**（如 `pc1.local`）和**访问路径**（如 `/pc1`）。
+
+### 3. 管理 VMess 端口映射 (仅服务端)
+除了通过域名路径访问，还可以为特定内网设备开启独立的公网端口。
+- **端口映射**：`VPS:20000` -> `内网设备 A`。
+- 适合远程桌面、SSH 等非 Web 业务。
+
+### 4. 安装客户端 (Bridge)
+运行在内网主机上。
+- **转发模式**：填写内网服务的监听地址（如 `127.0.0.1:80`）。
+- **出口模式**：无需填写目标，该客户端将直接作为上网代理出口。
 
 ---
 
-| 功能 | macOS | Linux |
-|------|:-----:|:-----:|
-| Xray 安装 | ✅ | ✅ |
-| Argo 临时隧道 | ✅ | ✅ |
-| Argo 固定隧道 | ❌ | ✅ |
-| Caddy 订阅服务 | ❌ | ✅ |
-| systemd 自启动 | ❌ | ✅ |
-| 开机自动启动 | 需手动配置 launchd | ✅ 自动 |
+## 📖 部署示例 (套 CF)
+
+1. **服务端**：安装 Portal，设置监听端口为 `54321`，路径为 `/user`。
+2. **Cloudflare**：
+   - 解析域名到 VPS IP。
+   - 在 **Origin Rules** 中设置：如果路径包含 `/user` 或 `/tunnel`，则回源端口改为 `54321`。
+3. **客户端**：安装 Bridge，模式选择“出口模式”。
+4. **使用**：在服务端添加一个映射端口 `10086`。本地连接 `VPS:10086` 即可通过内网主机的网络上网。
 
 ---
 
-## 安装后管理
+## 🗂️ 目录与管理
 
-安装完成后可使用 `2go` 命令进行管理：
-
-```bash
-2go status     # 查看 Xray / Argo 运行状态
-2go nodes      # 显示所有节点链接
-2go start      # 启动服务
-2go stop       # 停止服务
-2go restart    # 重启服务
-2go log-xray   # 查看 Xray 日志
-2go log-argo   # 查看 Argo 日志
-2go uninstall  # 一键卸载
-```
+- **安装目录**：`/etc/xray-rev` (Root) 或 `~/.local/share/xray-rev` (非 Root)。
+- **服务管理**：
+  ```bash
+  systemctl --user status xray-rev    # 查看状态
+  systemctl --user restart xray-rev   # 重启服务
+  ```
 
 ---
 
-## 自定义环境变量
-
-运行前可通过环境变量覆盖默认值：
-
-```bash
-# 示例：指定 UUID 和端口
-UUID=your-uuid PORT=12345 curl -Lo install_argo.sh "https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s)" && chmod +x install_argo.sh && ./install_argo.sh
-
-# 示例：自定义 CDN 优选 IP
-CFIP=1.2.3.4 CFPORT=443 curl -Lo install_argo.sh "https://raw.githubusercontent.com/obkj/xray-onekey-script/main/install_argo.sh?t=$(date +%s)" && chmod +x install_argo.sh && ./install_argo.sh
-```
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `UUID` | 随机生成 | 节点 UUID |
-| `PORT` | 随机 50000–65535 | Xray 内部监听端口 |
-| `CFIP` | (空) | 若为空则直连 Argo 域名；若指定则使用该优选 IP |
-| `CFPORT` | `443` | 配合 `CFIP` 使用的端口 |
-
----
-
-## 文件位置
-
-| 路径 | 说明 |
-|------|------|
-| `/usr/local/etc/xray-argo/` (macOS) | 安装目录 |
-| `/etc/xray-argo/` (Linux) | 安装目录 |
-| `…/config.json` | Xray 配置文件 |
-| `…/url.txt` | 节点链接文本 |
-| `…/argo.log` | Argo 日志（含临时域名） |
-| `…/xray.log` | Xray 运行日志 |
+## 📄 许可说明
+本项目基于 Xray-core。请在遵守当地法律法规的前提下使用。
