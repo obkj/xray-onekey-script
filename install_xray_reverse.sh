@@ -102,17 +102,31 @@ install_portal() {
     c "\n--- 安装服务端 (Portal) ---"
     read -p "请输入 UUID (留空随机): " UUID
     UUID=${UUID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "550e8400-e29b-41d4-a716-446655440000")}
-    RANDOM_PORT=$(awk 'BEGIN { srand(); print int(10000 + rand() * 50000) }')
-    read -p "请输入监听端口 (默认 ${RANDOM_PORT}): " LISTEN_PORT
-    LISTEN_PORT=${LISTEN_PORT:-${RANDOM_PORT}}
-    read -p "请输入用户访问路径 (默认 /user): " USER_PATH
-    USER_PATH=${USER_PATH:-/user}
-    read -p "请输入隧道连接路径 (默认 /tunnel): " TUNNEL_PATH
-    TUNNEL_PATH=${TUNNEL_PATH:-/tunnel}
+    echo -e "\n请选择连接方式:"
+    echo -e "  1) ${CYAN}Cloudflare 模式${RESET} (WS + TLS, 单端口双路径, 适合套 CDN)"
+    echo -e "  2) ${CYAN}直连 IP 模式${RESET} (TCP, 双端口, 适合直接连接, 无需域名)"
+    read -p "请选择 (1/2, 默认 1): " CONN_MODE
+    CONN_MODE=${CONN_MODE:-1}
+
+    if [[ "$CONN_MODE" == "1" ]]; then
+        RANDOM_PORT=$(awk 'BEGIN { srand(); print int(10000 + rand() * 50000) }')
+        read -p "请输入服务端监听端口 (默认 ${RANDOM_PORT}): " LISTEN_PORT
+        LISTEN_PORT=${LISTEN_PORT:-${RANDOM_PORT}}
+        read -p "请输入用户访问路径 (默认 /user): " USER_PATH
+        USER_PATH=${USER_PATH:-/user}
+        read -p "请输入隧道连接路径 (默认 /tunnel): " TUNNEL_PATH
+        TUNNEL_PATH=${TUNNEL_PATH:-/tunnel}
+    else
+        read -p "请输入用户访问端口 (默认 8080): " EXT_PORT
+        EXT_PORT=${EXT_PORT:-8080}
+        read -p "请输入隧道连接端口 (默认 8081): " TUNNEL_PORT
+        TUNNEL_PORT=${TUNNEL_PORT:-8081}
+    fi
     
     install_xray
     
-    cat > "${CONFIG_FILE}" << EOF
+    if [[ "$CONN_MODE" == "1" ]]; then
+        cat > "${CONFIG_FILE}" << EOF
 {
   "log": { "loglevel": "none" },
   "reverse": { "portals": [{ "tag": "portal", "domain": "reverse.local" }] },
@@ -132,11 +146,33 @@ install_portal() {
   "outbounds": [{ "protocol": "freedom", "tag": "direct" }]
 }
 EOF
-    setup_service
-    g "\n✅ 服务端安装完成！"
-    echo -e "请在 Cloudflare Origin Rules 中配置转发："
-    echo -e "  路径 ${CYAN}${USER_PATH}${RESET} -> 端口 ${CYAN}${LISTEN_PORT}${RESET}"
-    echo -e "  路径 ${CYAN}${TUNNEL_PATH}${RESET} -> 端口 ${CYAN}${LISTEN_PORT}${RESET}"
+    else
+        cat > "${CONFIG_FILE}" << EOF
+{
+  "log": { "loglevel": "none" },
+  "reverse": { "portals": [{ "tag": "portal", "domain": "reverse.local" }] },
+  "inbounds": [
+    { "tag": "ext_in", "port": ${EXT_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}" }] } },
+    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}" }] } }
+  ],
+  "routing": {
+    "rules": [
+      { "type": "field", "inboundTag": ["ext_in"], "outboundTag": "portal" },
+      { "type": "field", "inboundTag": ["tunnel_in"], "outboundTag": "direct" }
+    ]
+  },
+  "outbounds": [{ "protocol": "freedom", "tag": "direct" }]
+}
+EOF
+    fi
+    if [[ "$CONN_MODE" == "1" ]]; then
+        g "\n✅ 服务端安装完成！(Cloudflare 模式)"
+        echo -e "请在 CF Origin Rules 中配置转发到端口: ${CYAN}${LISTEN_PORT}${RESET}"
+    else
+        g "\n✅ 服务端安装完成！(直连 IP 模式)"
+        echo -e "用户访问端口: ${CYAN}${EXT_PORT}${RESET}"
+        echo -e "隧道连接端口: ${CYAN}${TUNNEL_PORT}${RESET}"
+    fi
     echo -e "UUID: ${PURPLE}${UUID}${RESET}"
 }
 
@@ -148,10 +184,25 @@ install_bridge() {
     c "\n--- 安装客户端 (Bridge) ---"
     read -p "请输入 UUID: " UUID
     [[ -z "${UUID}" ]] && fail "必须输入 UUID"
-    read -p "请输入公网服务器 CF 域名: " SERVER_ADDR
-    [[ -z "${SERVER_ADDR}" ]] && fail "必须输入域名"
-    read -p "请输入隧道连接路径 (默认 /tunnel): " TUNNEL_PATH
-    TUNNEL_PATH=${TUNNEL_PATH:-/tunnel}
+    echo -e "\n请选择连接方式:"
+    echo -e "  1) ${CYAN}Cloudflare 模式${RESET} (WS + TLS, 端口 443)"
+    echo -e "  2) ${CYAN}直连 IP 模式${RESET} (TCP, 自定义端口)"
+    read -p "请选择 (1/2, 默认 1): " CONN_MODE
+    CONN_MODE=${CONN_MODE:-1}
+
+    read -p "请输入公网服务器 IP 或域名: " SERVER_ADDR
+    [[ -z "${SERVER_ADDR}" ]] && fail "必须输入地址"
+
+    if [[ "$CONN_MODE" == "1" ]]; then
+        read -p "请输入隧道连接路径 (默认 /tunnel): " TUNNEL_PATH
+        TUNNEL_PATH=${TUNNEL_PATH:-/tunnel}
+        STREAM_SETTINGS="{\"network\": \"ws\", \"security\": \"tls\", \"tlsSettings\": {\"serverName\": \"${SERVER_ADDR}\"}, \"wsSettings\": {\"path\": \"${TUNNEL_PATH}\"}}"
+        SERVER_PORT=443
+    else
+        read -p "请输入服务端隧道端口: " SERVER_PORT
+        [[ -z "${SERVER_PORT}" ]] && fail "必须输入端口"
+        STREAM_SETTINGS="{\"network\": \"tcp\"}"
+    fi
     
     echo -e "\n请选择客户端工作模式:"
     echo -e "  1) ${CYAN}转发模式${RESET} - 将流量转发到本地特定服务 (如 Web)"
@@ -177,8 +228,8 @@ install_bridge() {
   "outbounds": [
     {
       "tag": "tunnel_out", "protocol": "vmess",
-      "settings": { "vnext": [{ "address": "${SERVER_ADDR}", "port": 443, "users": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] }] },
-      "streamSettings": { "network": "ws", "security": "tls", "tlsSettings": { "serverName": "${SERVER_ADDR}" }, "wsSettings": { "path": "${TUNNEL_PATH}" } }
+      "settings": { "vnext": [{ "address": "${SERVER_ADDR}", "port": ${SERVER_PORT}, "users": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] }] },
+      "streamSettings": ${STREAM_SETTINGS}
     },
     { "tag": "local_service", "protocol": "freedom", "settings": ${OUTBOUND_SETTINGS} },
     { "tag": "direct", "protocol": "freedom" }

@@ -53,6 +53,7 @@ curl -Lo install_xray_reverse.sh "https://raw.githubusercontent.com/obkj/xray-on
    - 在 **Origin Rules** 中设置：如果路径包含 `/user` 或 `/tunnel`，则回源端口改为 `54321`。
 3. **客户端**：安装 Bridge，模式选择“出口模式”。
 4. **使用**：在服务端添加一个映射端口 `10086`。本地连接 `VPS:10086` 即可通过内网主机的网络上网。
+5. **参考配置**：[服务端 (server.json)](./examples/server.json) | [客户端 (client.json)](./examples/client.json)
 
 ---
 
