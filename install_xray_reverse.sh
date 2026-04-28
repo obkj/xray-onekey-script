@@ -102,6 +102,11 @@ install_portal() {
     c "\n--- 安装服务端 (Portal) ---"
     read -p "请输入 UUID (留空随机): " UUID
     UUID=${UUID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "550e8400-e29b-41d4-a716-446655440000")}
+
+    # 初始化默认识别域名
+    RAND_STR=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)
+    REV_DOMAIN="rev_${RAND_STR}.local"
+
     echo -e "\n请选择连接方式:"
     echo -e "  1) ${CYAN}Cloudflare 模式${RESET} (WS + TLS, 单端口双路径, 适合套 CDN)"
     echo -e "  2) ${CYAN}直连 IP 模式${RESET} (TCP, 双端口, 适合直接连接, 无需域名)"
@@ -122,10 +127,12 @@ install_portal() {
         read -p "请输入隧道连接路径 (默认 /tunnel_${RAND_TUNNEL}): " TUNNEL_PATH
         TUNNEL_PATH=${TUNNEL_PATH:-/tunnel_${RAND_TUNNEL}}
     else
-        read -p "请输入用户访问端口 (默认 8080): " EXT_PORT
-        EXT_PORT=${EXT_PORT:-8080}
-        read -p "请输入隧道连接端口 (默认 8081): " TUNNEL_PORT
-        TUNNEL_PORT=${TUNNEL_PORT:-8081}
+        RAND_EXT=$(awk 'BEGIN { srand(); print int(10000 + rand() * 45000) }')
+        RAND_TUN=$(awk 'BEGIN { srand(); print int(45001 + rand() * 15000) }')
+        read -p "请输入用户访问端口 (默认 ${RAND_EXT}): " EXT_PORT
+        EXT_PORT=${EXT_PORT:-${RAND_EXT}}
+        read -p "请输入隧道连接端口 (默认 ${RAND_TUN}): " TUNNEL_PORT
+        TUNNEL_PORT=${TUNNEL_PORT:-${RAND_TUN}}
     fi
     
     install_xray
