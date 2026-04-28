@@ -234,19 +234,21 @@ EOF
 # -----------------------------------------------------------------------------
 
 install_portal() {
+    get_server_config || true
+    
     c "\n--- 安装服务端 (Portal) ---"
-    read -p "请输入 UUID (留空随机): " UUID
-    UUID=${UUID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "550e8400-e29b-41d4-a716-446655440000")}
+    read -p "请输入 UUID (留空使用当前或随机): " NEW_UUID
+    UUID=${NEW_UUID:-${UUID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "550e8400-e29b-41d4-a716-446655440000")}}
 
     # 初始化默认识别域名
     RAND_STR=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)
     REV_DOMAIN="rev_${RAND_STR}.local"
 
-    echo -e "\n请选择连接方式:"
+    echo -e "\n请选择连接方式 (当前: ${CONN_MODE:-2}):"
     echo -e "  1) ${CYAN}Cloudflare 模式${RESET} (WS + TLS, 单端口双路径, 适合套 CDN)"
     echo -e "  2) ${CYAN}直连 IP 模式${RESET} (TCP, 双端口, 适合直接连接, 无需域名)"
-    read -p "请选择 (1/2, 默认 2): " CONN_MODE
-    CONN_MODE=${CONN_MODE:-2}
+    read -p "请选择 (1/2, 默认 ${CONN_MODE:-2}): " NEW_CONN_MODE
+    CONN_MODE=${NEW_CONN_MODE:-${CONN_MODE:-2}}
 
     if [[ "$CONN_MODE" == "1" ]]; then
         RANDOM_PORT=$(awk 'BEGIN { srand(); print int(10000 + rand() * 50000) }')
@@ -387,11 +389,11 @@ install_bridge() {
     fi
 
     if [[ -z "${CONN_MODE:-}" ]]; then
-        echo -e "\n请选择连接方式:"
+        echo -e "\n请选择连接方式 (当前: ${CONN_MODE:-2}):"
         echo -e "  1) ${CYAN}Cloudflare 模式${RESET} (WS + TLS, 端口 443)"
         echo -e "  2) ${CYAN}直连 IP 模式${RESET} (TCP, 自定义端口)"
-        read -p "请选择 (1/2, 默认 2): " CONN_MODE
-        CONN_MODE=${CONN_MODE:-2}
+        read -p "请选择 (1/2, 默认 ${CONN_MODE:-2}): " NEW_CONN_MODE
+        CONN_MODE=${NEW_CONN_MODE:-${CONN_MODE:-2}}
     fi
 
     if [[ -z "${SERVER_ADDR:-}" ]]; then
