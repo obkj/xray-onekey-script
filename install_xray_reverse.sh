@@ -2,7 +2,7 @@
 # =============================================================================
 # Xray-2go 原生反向代理（VMess + WS + CF 专用版）
 # 专为套 Cloudflare CDN 设计，支持双路径分流与内网穿透
-# 版本: 1.4.0 (2026-04-28)
+# 版本: 1.5.0 (2026-04-28)
 # =============================================================================
 
 set -euo pipefail
@@ -329,7 +329,7 @@ EOF
   "reverse": { "portals": [{ "tag": "portal", "domain": "${REV_DOMAIN}" }] },
   "inbounds": [
     { "tag": "ext_in", "port": ${EXT_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] } },
-    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] } }
+    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "shadowsocks", "settings": { "method": "aes-128-gcm", "password": "${UUID}", "network": "tcp,udp" } }
   ],
   "routing": {
     "rules": [
@@ -463,12 +463,12 @@ install_bridge() {
   "reverse": { "bridges": [{ "tag": "bridge", "domain": "${REV_DOMAIN}" }] },
   "outbounds": [
     {
-      "tag": "tunnel_out", "protocol": "vmess",
-      "settings": { "vnext": [{ "address": "${SERVER_ADDR}", "port": ${SERVER_PORT}, "users": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] }] },
+      "tag": "tunnel_out", "protocol": "shadowsocks",
+      "settings": { "servers": [{ "address": "${SERVER_ADDR}", "port": ${SERVER_PORT}, "method": "aes-128-gcm", "password": "${UUID}" }] },
       "streamSettings": ${STREAM_SETTINGS}
     },
-    { "tag": "local_service", "protocol": "freedom", "settings": ${OUTBOUND_SETTINGS} },
-    { "tag": "direct", "protocol": "freedom" }
+    { "tag": "local_service", "protocol": "freedom", "settings": { "domainStrategy": "UseIP" } },
+    { "tag": "direct", "protocol": "freedom", "settings": { "domainStrategy": "UseIP" } }
   ],
   "routing": {
     "rules": [
@@ -525,7 +525,7 @@ main_menu() {
     clear
     p "================================================="
     p "    Xray 原生反代 (VMess+WS+CF) 一键管理脚本     "
-    p "              版本: 1.4.0 (2026-04-28)           "
+    p "              版本: 1.5.0 (2026-04-28)           "
     p "================================================="
     echo -e "  1) ${GREEN}安装服务端 (Portal)${RESET}"
     echo -e "  2) ${GREEN}安装客户端 (Bridge)${RESET}"
