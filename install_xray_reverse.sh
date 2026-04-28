@@ -459,8 +459,8 @@ install_bridge() {
   ],
   "routing": {
     "rules": [
-      { "type": "field", "inboundTag": ["bridge"], "outboundTag": "local_service" },
-      { "type": "field", "domain": ["${REV_DOMAIN}"], "outboundTag": "tunnel_out" }
+      { "type": "field", "domain": ["${REV_DOMAIN}"], "outboundTag": "tunnel_out" },
+      { "type": "field", "inboundTag": ["bridge"], "outboundTag": "local_service" }
     ]
   },
   "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
