@@ -307,11 +307,14 @@ install_bridge() {
         STREAM_SETTINGS="{\"network\": \"tcp\"}"
     fi
     
+    read -p "请输入识别域名 (需与服务端一致): " REV_DOMAIN
+    [[ -z "${REV_DOMAIN}" ]] && fail "必须输入识别域名"
+
     echo -e "\n请选择客户端工作模式:"
     echo -e "  1) ${CYAN}转发模式${RESET} - 将流量转发到本地特定服务 (如 Web)"
     echo -e "  2) ${CYAN}出口模式${RESET} - 将客户端作为上网出口 (访问 YouTube 等)"
-    read -p "请选择 (1/2, 默认 1): " BRIDGE_MODE
-    BRIDGE_MODE=${BRIDGE_MODE:-1}
+    read -p "请选择 (1/2, 默认 2): " BRIDGE_MODE
+    BRIDGE_MODE=${BRIDGE_MODE:-2}
     
     if [[ "$BRIDGE_MODE" == "1" ]]; then
         read -p "请输入内网服务目标 (默认 127.0.0.1:80): " LOCAL_TARGET
@@ -327,7 +330,7 @@ install_bridge() {
     cat > "${CONFIG_FILE}" << EOF
 {
   "log": { "loglevel": "none" },
-  "reverse": { "bridges": [{ "tag": "bridge", "domain": "reverse.local" }] },
+  "reverse": { "bridges": [{ "tag": "bridge", "domain": "${REV_DOMAIN}" }] },
   "outbounds": [
     {
       "tag": "tunnel_out", "protocol": "vmess",
