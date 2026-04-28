@@ -1,0 +1,14 @@
+{
+  "log": { "loglevel": "warning" },
+  "reverse": { "portals": [{ "tag": "portal", "domain": "rev_3jlog7.local" }] },
+  "inbounds": [
+    { "tag": "ext_in", "port": 14626, "protocol": "vmess", "settings": { "clients": [{ "id": "911e6c5c-e563-4f16-a29b-35d3aedc96f6", "alterId": 0 }] } },
+    { "tag": "tunnel_in", "port": 46543, "protocol": "vmess", "settings": { "clients": [{ "id": "911e6c5c-e563-4f16-a29b-35d3aedc96f6", "alterId": 0 }] } }
+  ],
+  "routing": {
+    "rules": [
+      { "type": "field", "inboundTag": ["ext_in", "tunnel_in"], "outboundTag": "portal" }
+    ]
+  },
+  "outbounds": [{ "protocol": "freedom", "tag": "direct" }]
+}

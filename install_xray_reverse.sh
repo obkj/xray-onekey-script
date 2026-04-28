@@ -35,9 +35,12 @@ IS_ROOT=false
 
 # 目录与路径
 WORK_DIR="/etc/xray-rev"
-[[ "$IS_ROOT" == "false" ]] && WORK_DIR="$HOME/.local/share/xray-rev"
+XRAY_BIN="/usr/local/bin/xray-rev"
+if [[ "$IS_ROOT" == "false" ]]; then
+    WORK_DIR="$HOME/.local/share/xray-rev"
+    XRAY_BIN="$HOME/.local/bin/xray-rev"
+fi
 CONFIG_FILE="${WORK_DIR}/config.json"
-XRAY_BIN="${WORK_DIR}/xray-rev"
 
 # 检查权限与 systemd
 HAS_SYSTEMD=false
@@ -62,6 +65,7 @@ install_xray() {
     URL="https://github.com/obkj/xray-onekey-script/releases/latest/download/${XRAY_ASSET}"
     curl -fL -o "${WORK_DIR}/xray.zip" "${URL}"
     unzip -o "${WORK_DIR}/xray.zip" -d "${WORK_DIR}/" > /dev/null 2>&1
+    mkdir -p "$(dirname "${XRAY_BIN}")"
     [[ -f "${WORK_DIR}/xray" ]] && mv -f "${WORK_DIR}/xray" "${XRAY_BIN}"
     chmod +x "${XRAY_BIN}"
     rm -f "${WORK_DIR}/xray.zip"
@@ -152,8 +156,7 @@ install_portal() {
   ],
   "routing": {
     "rules": [
-      { "type": "field", "path": ["${USER_PATH}"], "outboundTag": "portal" },
-      { "type": "field", "path": ["${TUNNEL_PATH}"], "outboundTag": "direct" }
+      { "type": "field", "path": ["${USER_PATH}", "${TUNNEL_PATH}"], "outboundTag": "portal" }
     ]
   },
   "outbounds": [{ "protocol": "freedom", "tag": "direct" }]
@@ -170,8 +173,7 @@ EOF
   ],
   "routing": {
     "rules": [
-      { "type": "field", "inboundTag": ["ext_in"], "outboundTag": "portal" },
-      { "type": "field", "inboundTag": ["tunnel_in"], "outboundTag": "direct" }
+      { "type": "field", "inboundTag": ["ext_in", "tunnel_in"], "outboundTag": "portal" }
     ]
   },
   "outbounds": [{ "protocol": "freedom", "tag": "direct" }]
