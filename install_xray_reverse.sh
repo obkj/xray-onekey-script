@@ -142,7 +142,7 @@ install_portal() {
         cat > "${CONFIG_FILE}" << EOF
 {
   "log": { "loglevel": "none" },
-  "reverse": { "portals": [{ "tag": "portal", "domain": "reverse.local" }] },
+  "reverse": { "portals": [{ "tag": "portal", "domain": "${REV_DOMAIN}" }] },
   "inbounds": [
     {
       "port": ${LISTEN_PORT}, "protocol": "vmess",
@@ -163,10 +163,10 @@ EOF
         cat > "${CONFIG_FILE}" << EOF
 {
   "log": { "loglevel": "none" },
-  "reverse": { "portals": [{ "tag": "portal", "domain": "reverse.local" }] },
+  "reverse": { "portals": [{ "tag": "portal", "domain": "${REV_DOMAIN}" }] },
   "inbounds": [
-    { "tag": "ext_in", "port": ${EXT_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}" }] } },
-    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}" }] } }
+    { "tag": "ext_in", "port": ${EXT_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0 }] } },
+    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0 }] } }
   ],
   "routing": {
     "rules": [
