@@ -195,6 +195,17 @@ get_server_config() {
     fi
 }
 
+cleanup_old_service() {
+    # 停止并清理旧版本的 Xray 反代服务，确保新配置被干净加载
+    if has_user_systemd 2>/dev/null; then
+        run_user_systemctl stop xray-rev >/dev/null 2>&1 || true
+        run_user_systemctl disable xray-rev >/dev/null 2>&1 || true
+    fi
+    # 强制杀掉所有残留进程
+    pkill -f "${XRAY_BIN}" 2>/dev/null || true
+    sleep 1
+}
+
 restart_service() {
     pkill -f "${XRAY_BIN}" || true
     "${XRAY_BIN}" run -c "${CONFIG_FILE}" > /dev/null 2>&1 &
@@ -202,6 +213,7 @@ restart_service() {
 
 setup_service() {
     step "配置系统服务"
+    cleanup_old_service
     mkdir -p "$(dirname "$XRAY_BIN")"
     mkdir -p "${TARGET_HOME}/.config/systemd/user"
     if has_user_systemd; then
