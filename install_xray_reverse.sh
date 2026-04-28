@@ -66,6 +66,12 @@ run_user_systemctl() {
     fi
 }
 
+has_user_systemd() {
+    $HAS_SYSTEMD || return 1
+    run_user_systemctl --quiet is-active default.target >/dev/null 2>&1 || \
+    run_user_systemctl --quiet is-system-running >/dev/null 2>&1
+}
+
 # -----------------------------------------------------------------------------
 # 核心逻辑：安装组件
 # -----------------------------------------------------------------------------
@@ -93,19 +99,15 @@ install_xray() {
 }
 
 restart_service() {
-    if $HAS_SYSTEMD; then
-        run_user_systemctl restart xray-rev
-    else
-        pkill -f "${XRAY_BIN}" || true
-        "${XRAY_BIN}" run -c "${CONFIG_FILE}" > /dev/null 2>&1 &
-    fi
+    pkill -f "${XRAY_BIN}" || true
+    "${XRAY_BIN}" run -c "${CONFIG_FILE}" > /dev/null 2>&1 &
 }
 
 setup_service() {
     step "配置系统服务"
     mkdir -p "$(dirname "$XRAY_BIN")"
     mkdir -p "${TARGET_HOME}/.config/systemd/user"
-    if $HAS_SYSTEMD; then
+    if has_user_systemd; then
         SVCPATH="${TARGET_HOME}/.config/systemd/user"
         cat > "$SVCPATH/xray-rev.service" << EOF
 [Unit]
@@ -121,9 +123,10 @@ WantedBy=default.target
 EOF
         run_user_systemctl daemon-reload
         run_user_systemctl enable xray-rev --now >/dev/null 2>&1 || true
-        restart_service
+        run_user_systemctl restart xray-rev
         ok "服务已启动并设为开机自启"
     else
+        info "未检测到可用的 user systemd，会改为直接后台启动"
         restart_service
         ok "服务已在后台启动"
     fi
@@ -308,7 +311,7 @@ EOF
 # -----------------------------------------------------------------------------
 
 show_status() {
-    if $HAS_SYSTEMD; then
+    if has_user_systemd; then
         run_user_systemctl status xray-rev --no-pager || y "服务未运行"
     else
         pgrep -f "${XRAY_BIN}" > /dev/null && g "Xray 正在运行" || r "Xray 已停止"
@@ -318,11 +321,13 @@ show_status() {
 uninstall() {
     read -p "确定要卸载吗？(y/n): " confirm
     [[ "$confirm" != "y" ]] && return
-    if $HAS_SYSTEMD; then
+    if has_user_systemd; then
         run_user_systemctl stop xray-rev >/dev/null 2>&1 || true
         run_user_systemctl disable xray-rev >/dev/null 2>&1 || true
         rm -f "$TARGET_HOME/.config/systemd/user/xray-rev.service"
         run_user_systemctl daemon-reload
+    else
+        rm -f "$TARGET_HOME/.config/systemd/user/xray-rev.service"
     fi
     pkill -f "${XRAY_BIN}" || true
     rm -rf "${WORK_DIR}"
