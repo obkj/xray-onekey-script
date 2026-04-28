@@ -145,7 +145,7 @@ build_client_import_token() {
         --arg server_port "$server_port" \
         --arg rev_domain "$rev_domain" \
         --arg tunnel_path "$tunnel_path" \
-        '{ver:$ver,conn_mode:$conn_mode,uuid:$uuid,server_addr:$server_addr,server_port:$server_port,rev_domain:$rev_domain,tunnel_path:$tunnel_path}' | base64 | tr -d '\r\n' | tr '+/' '_-' | sed 's#^#xrayrev://v1/#'
+        '{ver:$ver,conn_mode:$conn_mode,uuid:$uuid,server_addr:$server_addr,server_port:$server_port,rev_domain:$rev_domain,tunnel_path:$tunnel_path}' | base64 | tr -d '\r\n' | sed 's/+/-/g; s/\//_/g' | sed 's#^#xrayrev://v1/#'
 }
 
 parse_client_import_token() {
@@ -163,7 +163,7 @@ parse_client_import_token() {
 
     [[ "$import_token" == xrayrev://v1/* ]] || return 1
     encoded_payload="${import_token#xrayrev://v1/}"
-    payload="$(printf '%s' "$encoded_payload" | tr '_-' '+/' | base64 -d 2>/dev/null)" || return 1
+    payload="$(printf '%s' "$encoded_payload" | sed 's/-/+/g; s/_/\//g' | base64 -d 2>/dev/null)" || return 1
     parsed="$(printf '%s' "$payload" | jq -er '[.ver, .conn_mode, .uuid, .server_addr, .server_port, .rev_domain, (.tunnel_path // "")] | @tsv' 2>/dev/null)" || return 1
 
     IFS=$'\t' read -r token_ver parsed_conn_mode parsed_uuid parsed_server_addr parsed_server_port parsed_rev_domain parsed_tunnel_path <<< "$parsed"
