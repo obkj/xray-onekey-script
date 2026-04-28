@@ -460,8 +460,8 @@ while [[ $ARGO_RETRY_COUNT -lt $MAX_ARGO_RETRIES ]]; do
         info "已获域名: ${ARGO_DOMAIN}，正在实时检测 (需 5-10s)..."
         sleep 8
         HTTP_CODE=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 10 "https://${ARGO_DOMAIN}" || echo "000")
-        if [[ "${HTTP_CODE}" == "530" ]]; then
-            warn "检测到 HTTP 530 (隧道未就绪)，正在拉起重试..."
+        if [[ "${HTTP_CODE}" == "530" || "${HTTP_CODE}" == "404" ]]; then
+            warn "检测到 HTTP ${HTTP_CODE} (隧道未就绪)，正在拉起重试..."
             if ! $IS_MACOS && $HAS_SYSTEMD; then $SYSTEMCTL_CMD stop tunnel; else kill "$ARGO_PID" 2>/dev/null || true; fi
             sleep 3
             ARGO_DOMAIN=""
