@@ -30,8 +30,8 @@ curl -Lo install_xray_reverse.sh "https://raw.githubusercontent.com/obkj/xray-on
 
 ## 示例配置
 
-- [服务端示例 (example_portal_cf.json)](./example_portal_cf.json)
-- [客户端示例 (example_bridge_cf.json)](./example_bridge_cf.json)
+- [服务端示例 (server.json)](./server.json)
+- [客户端示例 (client.json)](./client.json)
 
 ---
 

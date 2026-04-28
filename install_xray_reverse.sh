@@ -141,7 +141,7 @@ else
   "outbounds": [
     {
       "tag": "tunnel_out", "protocol": "vmess",
-      "settings": { "vnext": [{ "address": "${SERVER_ADDR}", "port": 443, "users": [{ "id": "${UUID}", "alterId": 0, "security": "auto" }] }] },
+      "settings": { "vnext": [{ "address": "${SERVER_ADDR}", "port": 443, "users": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] }] },
       "streamSettings": { "network": "ws", "security": "tls", "tlsSettings": { "serverName": "${SERVER_ADDR}" }, "wsSettings": { "path": "${TUNNEL_PATH}" } }
     },
     { "tag": "local_service", "protocol": "freedom", "settings": { "redirect": "${LOCAL_TARGET}" } },
