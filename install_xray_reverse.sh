@@ -293,14 +293,16 @@ install_portal() {
   "reverse": { "portals": [{ "tag": "portal", "domain": "${REV_DOMAIN}" }] },
   "inbounds": [
     {
-      "port": ${LISTEN_PORT}, "protocol": "vmess",
-      "settings": { "clients": [{ "id": "${UUID}", "alterId": 0 }] },
-      "streamSettings": { "network": "ws" }
+      "tag": "ext_in", "port": ${LISTEN_PORT}, "protocol": "vmess",
+      "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "none" }] },
+      "streamSettings": { "network": "ws" },
+      "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
     }
   ],
   "routing": {
     "rules": [
-      { "type": "field", "path": ["${USER_PATH}", "${TUNNEL_PATH}"], "outboundTag": "portal" }
+      { "type": "field", "path": ["${USER_PATH}", "${TUNNEL_PATH}"], "outboundTag": "portal" },
+      { "type": "field", "inboundTag": ["ext_in"], "outboundTag": "portal" }
     ]
   },
   "outbounds": [{ "protocol": "freedom", "tag": "direct" }]
@@ -315,8 +317,8 @@ EOF
   "log": { "loglevel": "none" },
   "reverse": { "portals": [{ "tag": "portal", "domain": "${REV_DOMAIN}" }] },
   "inbounds": [
-    { "tag": "ext_in", "port": ${EXT_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0 }] } },
-    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0 }] } }
+    { "tag": "ext_in", "port": ${EXT_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "none" }] }, "sniffing": { "enabled": true, "destOverride": ["http", "tls"] } },
+    { "tag": "tunnel_in", "port": ${TUNNEL_PORT}, "protocol": "vmess", "settings": { "clients": [{ "id": "${UUID}", "alterId": 0, "security": "none" }] }, "sniffing": { "enabled": true, "destOverride": ["http", "tls"] } }
   ],
   "routing": {
     "rules": [
@@ -451,7 +453,7 @@ install_bridge() {
   "outbounds": [
     {
       "tag": "tunnel_out", "protocol": "vmess",
-      "settings": { "vnext": [{ "address": "${SERVER_ADDR}", "port": ${SERVER_PORT}, "users": [{ "id": "${UUID}", "alterId": 0, "security": "aes-128-gcm" }] }] },
+      "settings": { "vnext": [{ "address": "${SERVER_ADDR}", "port": ${SERVER_PORT}, "users": [{ "id": "${UUID}", "alterId": 0, "security": "none" }] }] },
       "streamSettings": ${STREAM_SETTINGS}
     },
     { "tag": "local_service", "protocol": "freedom", "settings": ${OUTBOUND_SETTINGS} },
@@ -459,7 +461,7 @@ install_bridge() {
   ],
   "routing": {
     "rules": [
-      { "type": "field", "domain": ["${REV_DOMAIN}"], "outboundTag": "tunnel_out" },
+      { "type": "field", "inboundTag": ["bridge"], "domain": ["full:${REV_DOMAIN}"], "outboundTag": "tunnel_out" },
       { "type": "field", "inboundTag": ["bridge"], "outboundTag": "local_service" }
     ]
   },
