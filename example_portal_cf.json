@@ -1,0 +1,24 @@
+{
+  "log": { "loglevel": "info" },
+  "reverse": { "portals": [{ "tag": "portal", "domain": "reverse.local" }] },
+  "inbounds": [
+    {
+      "tag": "external_in",
+      "port": 80,
+      "protocol": "vmess",
+      "settings": { "clients": [{ "id": "550e8400-e29b-41d4-a716-446655440000", "alterId": 0 }] },
+      "streamSettings": { "network": "ws", "wsSettings": { "path": "/user-access" } }
+    },
+    {
+      "tag": "tunnel_in",
+      "port": 8080,
+      "protocol": "vmess",
+      "settings": { "clients": [{ "id": "550e8400-e29b-41d4-a716-446655440000", "alterId": 0 }] },
+      "streamSettings": { "network": "ws", "wsSettings": { "path": "/tunnel-path" } }
+    }
+  ],
+  "routing": {
+    "rules": [{ "type": "field", "inboundTag": ["external_in"], "outboundTag": "portal" }]
+  },
+  "outbounds": [{ "protocol": "freedom", "tag": "direct" }]
+}

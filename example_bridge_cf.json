@@ -1,0 +1,35 @@
+{
+  "log": { "loglevel": "info" },
+  "reverse": { "bridges": [{ "tag": "bridge", "domain": "reverse.local" }] },
+  "inbounds": [
+    { "tag": "local_proxy", "port": 1080, "protocol": "socks", "settings": { "auth": "noauth", "udp": true } }
+  ],
+  "outbounds": [
+    {
+      "tag": "tunnel_out",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [{
+          "address": "YOUR_CF_DOMAIN.com",
+          "port": 443,
+          "users": [{ "id": "550e8400-e29b-41d4-a716-446655440000", "alterId": 0, "security": "auto" }]
+        }]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "tls",
+        "tlsSettings": { "serverName": "YOUR_CF_DOMAIN.com" },
+        "wsSettings": { "path": "/tunnel-path" }
+      }
+    },
+    { "tag": "local_service", "protocol": "freedom", "settings": { "redirect": "127.0.0.1:80" } },
+    { "tag": "direct", "protocol": "freedom" }
+  ],
+  "routing": {
+    "rules": [
+      { "type": "field", "inboundTag": ["reverse_bridge"], "outboundTag": "local_service" },
+      { "type": "field", "inboundTag": ["local_proxy"], "outboundTag": "direct" },
+      { "type": "field", "outboundTag": ["tunnel_out"], "network": "tcp,udp" }
+    ]
+  }
+}
